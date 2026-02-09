@@ -1,0 +1,1506 @@
+import { createStore, type StateCreator } from 'zustand/vanilla'
+import { useStore } from 'zustand'
+
+export type RoleKey =
+  | 'terminal'
+  | 'market'
+  | 'dispatch'
+  | 'finance'
+  | 'carrier'
+  | 'driver'
+
+export type PlanStatus =
+  | 'draft'
+  | 'submitted'
+  | 'returned'
+  | 'approved'
+  | 'cancelled'
+  | 'changed'
+
+export type OrderStatus =
+  | 'pending-supplement'
+  | 'ordered'
+  | 'stocking'
+  | 'loaded'
+  | 'transporting'
+  | 'arrived'
+  | 'pending-acceptance'
+  | 'accepted'
+  | 'settling'
+  | 'settled'
+  | 'archived'
+
+export type TransportMode = 'upstream' | 'self' | 'carrier'
+export type PaymentMethod = 'prepaid' | 'postpaid'
+export type WeighDiffRule = 'load' | 'unload' | 'delta'
+
+export interface Site {
+  id: string
+  name: string
+  type: 'load' | 'unload' | 'use'
+  status: 'enabled' | 'disabled' | 'maintenance'
+  maintenancePolicy?: 'block' | 'manual'
+  maintenanceWindow?: string
+}
+
+export interface Vehicle {
+  id: string
+  plateNo: string
+  capacity: number
+  valid: boolean
+  certExpiry: string
+}
+
+export interface Person {
+  id: string
+  name: string
+  role: 'driver' | 'escort'
+  valid: boolean
+  certExpiry: string
+}
+
+export interface GasPrice {
+  id: string
+  sourceCompany: string
+  sourceSite: string
+  scope: 'public' | 'exclusive'
+  customerId?: string
+  price: number
+  validFrom: string
+  validTo: string
+  taxIncluded: boolean
+  note: string
+}
+
+export interface Plan {
+  id: string
+  number: string
+  customerId: string
+  customerName: string
+  siteId: string
+  siteName: string
+  priceId: string
+  plannedVolume: number
+  unitPrice: number
+  estimatedAmount: number
+  freightFee: number
+  totalAmount: number
+  transportMode: TransportMode
+  paymentMethod: PaymentMethod
+  weighDiffRule: WeighDiffRule
+  agreementChecked: boolean
+  carrierId?: string
+  vehicleId?: string
+  driverId?: string
+  escortId?: string
+  status: PlanStatus
+  submittedAt: string
+  reviewer?: string
+  rejectReason?: string
+}
+
+export interface Order {
+  id: string
+  number: string
+  planId: string
+  customerName: string
+  siteName: string
+  transportMode: TransportMode
+  weighDiffRule: WeighDiffRule
+  status: OrderStatus
+  threshold: number
+  loadWeight?: number
+  unloadWeight?: number
+  settlementWeight?: number
+  diffAbnormal: boolean
+  exceptionNote?: string
+}
+
+export interface Account {
+  total: number
+  available: number
+  occupied: number
+  frozen: number
+}
+
+export interface LedgerRecord {
+  id: string
+  type: 'deposit' | 'occupy' | 'release' | 'freeze' | 'deduct' | 'refund'
+  amount: number
+  relatedNo: string
+  createdAt: string
+  note: string
+}
+
+export interface DepositRecord {
+  id: string
+  customerName: string
+  amount: number
+  paidAt: string
+  receiptName: string
+  status: 'pending' | 'confirmed' | 'rejected'
+  reviewer?: string
+  rejectReason?: string
+}
+
+export interface NotificationItem {
+  id: string
+  category: 'approval' | 'fulfillment' | 'finance' | 'system'
+  title: string
+  content: string
+  createdAt: string
+  read: boolean
+}
+
+export interface ReconciliationStatement {
+  id: string
+  number: string
+  customerName: string
+  period: string
+  status: 'draft' | 'platform-stamped' | 'double-confirmed' | 'offline-confirmed'
+  totalAmount: number
+  orderNumbers: string[]
+  stampLogs: Array<{
+    actorType: 'platform' | 'customer'
+    actor: string
+    stampedAt: string
+  }>
+}
+
+export interface InvoiceItem {
+  id: string
+  number: string
+  customerName: string
+  amount: number
+  issueDate: string
+  statementNo: string
+  status: 'pending' | 'issued'
+}
+
+export interface OnboardingApplication {
+  id: string
+  organizationName: string
+  organizationType: 'upstream' | 'terminal' | 'carrier'
+  contactName: string
+  contactPhone: string
+  submittedAt: string
+  status: 'pending' | 'approved' | 'rejected' | 'activated'
+  level?: 'A' | 'B' | 'C'
+  reviewer?: string
+  rejectReason?: string
+  contractName?: string
+  contractEffectiveDate?: string
+}
+
+export type ExceptionType =
+  | 'plan-terminate'
+  | 'order-terminate'
+  | 'plan-change'
+  | 'order-change'
+  | 'delta-adjustment'
+
+export interface ExceptionCase {
+  id: string
+  number: string
+  type: ExceptionType
+  targetNo: string
+  reason: string
+  responsibilityParty: string
+  amount: number
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: string
+  reviewer?: string
+  reviewedAt?: string
+  note?: string
+}
+
+export interface DashboardMetric {
+  id: string
+  title: string
+  value: string
+  trend?: string
+}
+
+export interface PlanInput {
+  siteId: string
+  priceId: string
+  plannedVolume: number
+  freightFee: number
+  transportMode: TransportMode
+  paymentMethod: PaymentMethod
+  weighDiffRule: WeighDiffRule
+  agreementChecked: boolean
+  carrierId?: string
+  vehicleId?: string
+  driverId?: string
+  escortId?: string
+}
+
+export interface CreatePlanResult {
+  success: boolean
+  errors: string[]
+  planId?: string
+}
+
+export interface ReviewPlanInput {
+  planId: string
+  action: 'approve' | 'reject'
+  reviewer: string
+  reason?: string
+}
+
+export interface LoadConfirmInput {
+  orderId: string
+  weight: number
+}
+
+export interface UnloadConfirmInput {
+  orderId: string
+  weight: number
+}
+
+export interface DepositInput {
+  customerName: string
+  amount: number
+  paidAt: string
+  receiptName: string
+}
+
+export interface ArchiveActionResult {
+  success: boolean
+  error?: string
+}
+
+export interface CreateExceptionInput {
+  type: ExceptionType
+  targetNo: string
+  reason: string
+  responsibilityParty: string
+  amount: number
+}
+
+export interface ProcessExceptionInput {
+  exceptionId: string
+  action: 'approve' | 'reject'
+  reviewer: string
+  note?: string
+}
+
+export interface ReviewOnboardingInput {
+  applicationId: string
+  action: 'approve' | 'reject'
+  reviewer: string
+  reason?: string
+  level?: 'A' | 'B' | 'C'
+}
+
+export interface UploadOnboardingContractInput {
+  applicationId: string
+  contractName: string
+  effectiveDate: string
+}
+
+export interface AppSeed {
+  currentRole: RoleKey
+  activeCustomerId: string
+  activeCustomerName: string
+  account: Account
+  sites: Site[]
+  vehicles: Vehicle[]
+  personnel: Person[]
+  gasPrices: GasPrice[]
+  plans: Plan[]
+  orders: Order[]
+  ledgers: LedgerRecord[]
+  deposits: DepositRecord[]
+  notifications: NotificationItem[]
+  reconciliations: ReconciliationStatement[]
+  invoices: InvoiceItem[]
+  onboardingApplications: OnboardingApplication[]
+  exceptions: ExceptionCase[]
+  dashboardMetrics: Record<RoleKey, DashboardMetric[]>
+}
+
+export interface AppState extends AppSeed {
+  switchRole: (role: RoleKey) => void
+  createPlan: (input: PlanInput) => CreatePlanResult
+  reviewPlan: (input: ReviewPlanInput) => void
+  cancelPlan: (planId: string, reason: string) => void
+  confirmLoad: (input: LoadConfirmInput) => void
+  confirmUnload: (input: UnloadConfirmInput) => void
+  resolveDiffException: (orderId: string, settlementWeight: number, note: string) => void
+  acceptOrder: (orderId: string, accepted: boolean, settlementWeight: number) => void
+  registerDeposit: (input: DepositInput) => void
+  reviewDeposit: (
+    depositId: string,
+    action: 'confirm' | 'reject',
+    reviewer: string,
+    reason?: string,
+  ) => void
+  applyStamp: (
+    statementId: string,
+    actorType: 'platform' | 'customer',
+    actor: string,
+  ) => void
+  issueInvoice: (invoiceId: string, issuer: string) => void
+  reviewOnboarding: (input: ReviewOnboardingInput) => void
+  uploadOnboardingContract: (input: UploadOnboardingContractInput) => void
+  archiveOrder: (orderId: string, operator: string) => ArchiveActionResult
+  unarchiveOrder: (orderId: string, operator: string) => ArchiveActionResult
+  createException: (input: CreateExceptionInput) => string
+  processException: (input: ProcessExceptionInput) => void
+  markNotificationRead: (notificationId: string) => void
+}
+
+let sequence = 10
+
+const now = () => new Date().toISOString()
+const nextId = (prefix: string) => `${prefix}-${Date.now()}-${sequence++}`
+const nextNo = (prefix: string) => {
+  const dateTag = new Date().toISOString().slice(0, 10).replaceAll('-', '')
+  const seq = String(sequence++).padStart(3, '0')
+
+  return `${prefix}-${dateTag}-${seq}`
+}
+
+const createNotification = (
+  category: NotificationItem['category'],
+  title: string,
+  content: string,
+): NotificationItem => ({
+  id: nextId('msg'),
+  category,
+  title,
+  content,
+  createdAt: now(),
+  read: false,
+})
+
+const createLedger = (
+  type: LedgerRecord['type'],
+  amount: number,
+  relatedNo: string,
+  note: string,
+): LedgerRecord => ({
+  id: nextId('ldg'),
+  type,
+  amount,
+  relatedNo,
+  note,
+  createdAt: now(),
+})
+
+const ensureFixed = (value: number) => Number(value.toFixed(2))
+
+export const defaultMockData = (): AppSeed => ({
+  currentRole: 'terminal',
+  activeCustomerId: 'customer-a',
+  activeCustomerName: '华东能源科技有限公司',
+  account: {
+    total: 520000,
+    available: 160000,
+    occupied: 40000,
+    frozen: 320000,
+  },
+  sites: [
+    {
+      id: 'site-01',
+      name: '苏州工业园卸气站',
+      type: 'unload',
+      status: 'enabled',
+    },
+    {
+      id: 'site-02',
+      name: '常州西港卸气站',
+      type: 'unload',
+      status: 'maintenance',
+      maintenancePolicy: 'block',
+      maintenanceWindow: '2026-02-08 ~ 2026-02-12',
+    },
+    {
+      id: 'site-03',
+      name: '无锡北站用气点',
+      type: 'use',
+      status: 'enabled',
+    },
+  ],
+  vehicles: [
+    {
+      id: 'vehicle-01',
+      plateNo: '苏A·LNG88',
+      capacity: 35,
+      valid: true,
+      certExpiry: '2026-12-31',
+    },
+    {
+      id: 'vehicle-02',
+      plateNo: '苏B·LNG12',
+      capacity: 25,
+      valid: false,
+      certExpiry: '2026-01-15',
+    },
+  ],
+  personnel: [
+    {
+      id: 'person-01',
+      name: '赵强',
+      role: 'driver',
+      valid: true,
+      certExpiry: '2026-08-31',
+    },
+    {
+      id: 'person-02',
+      name: '王敏',
+      role: 'escort',
+      valid: true,
+      certExpiry: '2026-09-30',
+    },
+    {
+      id: 'person-03',
+      name: '李凯',
+      role: 'driver',
+      valid: false,
+      certExpiry: '2025-12-31',
+    },
+  ],
+  gasPrices: [
+    {
+      id: 'price-public-1',
+      sourceCompany: '中海气源公司',
+      sourceSite: '宁波接收站',
+      scope: 'public',
+      price: 3950,
+      validFrom: '2026-02-01',
+      validTo: '2026-02-15',
+      taxIncluded: true,
+      note: '公共挂牌价',
+    },
+    {
+      id: 'price-exclusive-a',
+      sourceCompany: '中海气源公司',
+      sourceSite: '宁波接收站',
+      scope: 'exclusive',
+      customerId: 'customer-a',
+      price: 4200,
+      validFrom: '2026-02-01',
+      validTo: '2026-02-15',
+      taxIncluded: true,
+      note: '一户一价，覆盖公共价',
+    },
+    {
+      id: 'price-public-2',
+      sourceCompany: '华北气源公司',
+      sourceSite: '天津港站',
+      scope: 'public',
+      price: 3880,
+      validFrom: '2026-02-01',
+      validTo: '2026-02-20',
+      taxIncluded: false,
+      note: '公共价，税外',
+    },
+  ],
+  plans: [
+    {
+      id: 'plan-1001',
+      number: 'PL-20260209-001',
+      customerId: 'customer-a',
+      customerName: '华东能源科技有限公司',
+      siteId: 'site-01',
+      siteName: '苏州工业园卸气站',
+      priceId: 'price-exclusive-a',
+      plannedVolume: 22,
+      unitPrice: 4200,
+      estimatedAmount: 92400,
+      freightFee: 3200,
+      totalAmount: 95600,
+      transportMode: 'carrier',
+      paymentMethod: 'prepaid',
+      weighDiffRule: 'delta',
+      agreementChecked: true,
+      carrierId: 'carrier-01',
+      vehicleId: 'vehicle-01',
+      driverId: 'person-01',
+      escortId: 'person-02',
+      status: 'submitted',
+      submittedAt: '2026-02-09T08:30:00.000Z',
+    },
+    {
+      id: 'plan-1002',
+      number: 'PL-20260209-002',
+      customerId: 'customer-a',
+      customerName: '华东能源科技有限公司',
+      siteId: 'site-03',
+      siteName: '无锡北站用气点',
+      priceId: 'price-public-1',
+      plannedVolume: 18,
+      unitPrice: 3950,
+      estimatedAmount: 71100,
+      freightFee: 2000,
+      totalAmount: 73100,
+      transportMode: 'upstream',
+      paymentMethod: 'postpaid',
+      weighDiffRule: 'unload',
+      agreementChecked: true,
+      status: 'approved',
+      submittedAt: '2026-02-08T08:30:00.000Z',
+      reviewer: '市场部-周婷',
+    },
+  ],
+  orders: [
+    {
+      id: 'order-2001',
+      number: 'OD-20260209-001',
+      planId: 'plan-1002',
+      customerName: '华东能源科技有限公司',
+      siteName: '无锡北站用气点',
+      transportMode: 'upstream',
+      weighDiffRule: 'unload',
+      status: 'transporting',
+      threshold: 0.5,
+      loadWeight: 18,
+      unloadWeight: 17.8,
+      settlementWeight: 17.8,
+      diffAbnormal: false,
+    },
+  ],
+  ledgers: [
+    {
+      id: 'ldg-init-1',
+      type: 'freeze',
+      amount: 320000,
+      relatedNo: 'OD-20260208-001',
+      note: '历史订单冻结',
+      createdAt: '2026-02-08T11:00:00.000Z',
+    },
+    {
+      id: 'ldg-init-2',
+      type: 'occupy',
+      amount: 40000,
+      relatedNo: 'PL-20260209-001',
+      note: '计划提交占用',
+      createdAt: '2026-02-09T08:30:00.000Z',
+    },
+  ],
+  deposits: [
+    {
+      id: 'dep-1',
+      customerName: '华东能源科技有限公司',
+      amount: 50000,
+      paidAt: '2026-02-09',
+      receiptName: '回单-0209.pdf',
+      status: 'pending',
+    },
+  ],
+  notifications: [
+    {
+      id: 'msg-init-1',
+      category: 'approval',
+      title: '计划待审批',
+      content: 'PL-20260209-001 已提交，请市场部处理。',
+      createdAt: '2026-02-09T08:31:00.000Z',
+      read: false,
+    },
+  ],
+  reconciliations: [
+    {
+      id: 'rc-202602-001',
+      number: 'RC-202602-001',
+      customerName: '华东能源科技有限公司',
+      period: '2026-02-01 ~ 2026-02-15',
+      status: 'draft',
+      totalAmount: 168700,
+      orderNumbers: ['OD-20260209-001'],
+      stampLogs: [],
+    },
+  ],
+  invoices: [
+    {
+      id: 'inv-1',
+      number: 'INV-20260208-001',
+      customerName: '华东能源科技有限公司',
+      amount: 120000,
+      issueDate: '2026-02-08',
+      statementNo: 'RC-202601-003',
+      status: 'issued',
+    },
+    {
+      id: 'inv-2',
+      number: 'INV-20260209-002',
+      customerName: '华东能源科技有限公司',
+      amount: 48700,
+      issueDate: '2026-02-09',
+      statementNo: 'RC-202602-001',
+      status: 'pending',
+    },
+  ],
+  onboardingApplications: [
+    {
+      id: 'onb-001',
+      organizationName: '江苏中海清洁能源有限公司',
+      organizationType: 'terminal',
+      contactName: '张经理',
+      contactPhone: '13800138000',
+      submittedAt: '2026-02-09T02:30:00.000Z',
+      status: 'pending',
+    },
+    {
+      id: 'onb-002',
+      organizationName: '华东承运物流有限公司',
+      organizationType: 'carrier',
+      contactName: '刘主管',
+      contactPhone: '13900139000',
+      submittedAt: '2026-02-08T05:20:00.000Z',
+      status: 'rejected',
+      rejectReason: '运输资质附件不完整',
+      reviewer: '市场部-周婷',
+    },
+  ],
+  exceptions: [
+    {
+      id: 'ex-001',
+      number: 'EX-20260209-001',
+      type: 'delta-adjustment',
+      targetNo: 'OD-20260209-001',
+      reason: '装卸磅差超阈值，需多退少补',
+      responsibilityParty: '承运商',
+      amount: 3200,
+      status: 'pending',
+      createdAt: '2026-02-09T09:20:00.000Z',
+    },
+  ],
+  dashboardMetrics: {
+    terminal: [
+      { id: 'tm-1', title: '账户可用余额', value: '¥160,000.00', trend: '+12%' },
+      { id: 'tm-2', title: '待审批计划', value: '1 单' },
+      { id: 'tm-3', title: '运输中订单', value: '1 单' },
+    ],
+    market: [
+      { id: 'mk-1', title: '待审批计划', value: '1 单', trend: '+2' },
+      { id: 'mk-2', title: '今日发布气价', value: '3 条' },
+      { id: 'mk-3', title: '余额预警客户', value: '1 家' },
+    ],
+    dispatch: [
+      { id: 'dp-1', title: '待装车', value: '0 单' },
+      { id: 'dp-2', title: '运输中', value: '1 单' },
+      { id: 'dp-3', title: '待验收', value: '0 单' },
+    ],
+    finance: [
+      { id: 'fn-1', title: '待确认预存', value: '1 笔' },
+      { id: 'fn-2', title: '冻结金额', value: '¥320,000.00' },
+      { id: 'fn-3', title: '待开票', value: '1 单' },
+    ],
+    carrier: [
+      { id: 'cr-1', title: '今日任务', value: '2 单' },
+      { id: 'cr-2', title: '待装车', value: '1 单' },
+      { id: 'cr-3', title: '待卸车', value: '1 单' },
+    ],
+    driver: [
+      { id: 'dr-1', title: '待装车', value: '1 单' },
+      { id: 'dr-2', title: '待卸车', value: '1 单' },
+      { id: 'dr-3', title: '异常上报', value: '0 单' },
+    ],
+  },
+})
+
+const createState = (seed: AppSeed): StateCreator<AppState> =>
+  (set, get) => ({
+    ...seed,
+    switchRole: (role: RoleKey) => {
+      set({ currentRole: role })
+    },
+    createPlan: (input: PlanInput): CreatePlanResult => {
+      const state = get()
+      const errors: string[] = []
+      const site = state.sites.find((item) => item.id === input.siteId)
+      const gasPrice = state.gasPrices.find((item) => item.id === input.priceId)
+
+      if (!site) {
+        errors.push('请选择有效站点')
+      }
+
+      if (site?.status === 'maintenance' && site.maintenancePolicy === 'block') {
+        errors.push(
+          `站点 [${site.name}] 当前处于维护中（${site.maintenanceWindow ?? '维护中'}）`,
+        )
+      }
+
+      if (site?.status === 'disabled') {
+        errors.push(`站点 [${site.name}] 已停用`)
+      }
+
+      if (!gasPrice) {
+        errors.push('请选择有效气价')
+      }
+
+      if (input.plannedVolume <= 0) {
+        errors.push('计划量必须大于 0')
+      }
+
+      if (!input.agreementChecked) {
+        errors.push('请先勾选费用确认条款')
+      }
+
+      if (input.transportMode !== 'upstream') {
+        const vehicle = state.vehicles.find((item) => item.id === input.vehicleId)
+        const driver = state.personnel.find((item) => item.id === input.driverId)
+        const escort = state.personnel.find((item) => item.id === input.escortId)
+
+        if (!input.vehicleId || !vehicle) {
+          errors.push('自提/承运模式必须选择车辆')
+        } else if (!vehicle.valid) {
+          errors.push(`车辆 [${vehicle.plateNo}] 运输资质已过期（${vehicle.certExpiry}）`)
+        }
+
+        if (!input.driverId || !driver) {
+          errors.push('请选择司机')
+        } else if (!driver.valid) {
+          errors.push(`司机 [${driver.name}] 资质已过期（${driver.certExpiry}）`)
+        }
+
+        if (!input.escortId || !escort) {
+          errors.push('请选择押运员')
+        } else if (!escort.valid) {
+          errors.push(`押运员 [${escort.name}] 资质已过期（${escort.certExpiry}）`)
+        }
+      }
+
+      const unitPrice = gasPrice?.price ?? 0
+      const estimatedAmount = ensureFixed(unitPrice * input.plannedVolume)
+      const totalAmount = ensureFixed(estimatedAmount + input.freightFee)
+
+      if (state.account.available < totalAmount) {
+        errors.push(
+          `可用余额不足：需要 ¥${totalAmount.toLocaleString()}, 当前可用 ¥${state.account.available.toLocaleString()}`,
+        )
+      }
+
+      if (errors.length > 0 || !site || !gasPrice) {
+        return {
+          success: false,
+          errors,
+        }
+      }
+
+      const planId = nextId('plan')
+      const planNo = nextNo('PL')
+      const newPlan: Plan = {
+        id: planId,
+        number: planNo,
+        customerId: state.activeCustomerId,
+        customerName: state.activeCustomerName,
+        siteId: site.id,
+        siteName: site.name,
+        priceId: gasPrice.id,
+        plannedVolume: input.plannedVolume,
+        unitPrice,
+        estimatedAmount,
+        freightFee: input.freightFee,
+        totalAmount,
+        transportMode: input.transportMode,
+        paymentMethod: input.paymentMethod,
+        weighDiffRule: input.weighDiffRule,
+        agreementChecked: input.agreementChecked,
+        carrierId: input.carrierId,
+        vehicleId: input.vehicleId,
+        driverId: input.driverId,
+        escortId: input.escortId,
+        status: 'submitted',
+        submittedAt: now(),
+      }
+
+      const nextAccount: Account = {
+        ...state.account,
+        available: ensureFixed(state.account.available - totalAmount),
+        occupied: ensureFixed(state.account.occupied + totalAmount),
+      }
+
+      set({
+        plans: [newPlan, ...state.plans],
+        account: nextAccount,
+        ledgers: [
+          createLedger('occupy', totalAmount, newPlan.number, '计划提交占用资金'),
+          ...state.ledgers,
+        ],
+        notifications: [
+          createNotification(
+            'approval',
+            '新计划待审批',
+            `${newPlan.number} 已提交，待市场部审批。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+        errors: [],
+        planId,
+      }
+    },
+    reviewPlan: (input: ReviewPlanInput) => {
+      const state = get()
+      const plan = state.plans.find((item) => item.id === input.planId)
+
+      if (!plan || !['submitted', 'returned'].includes(plan.status)) {
+        return
+      }
+
+      if (input.action === 'reject') {
+        const nextPlans = state.plans.map((item) =>
+          item.id === input.planId
+            ? {
+                ...item,
+                status: 'returned' as const,
+                reviewer: input.reviewer,
+                rejectReason: input.reason ?? '信息需补充',
+              }
+            : item,
+        )
+
+        set({
+          plans: nextPlans,
+          account: {
+            ...state.account,
+            available: ensureFixed(state.account.available + plan.totalAmount),
+            occupied: ensureFixed(state.account.occupied - plan.totalAmount),
+          },
+          ledgers: [
+            createLedger('release', plan.totalAmount, plan.number, '计划退回释放占用资金'),
+            ...state.ledgers,
+          ],
+          notifications: [
+            createNotification(
+              'approval',
+              '计划已退回',
+              `${plan.number} 已退回，原因：${input.reason ?? '信息需补充'}`,
+            ),
+            ...state.notifications,
+          ],
+        })
+
+        return
+      }
+
+      const approvedPlan: Plan = {
+        ...plan,
+        status: 'approved',
+        reviewer: input.reviewer,
+        rejectReason: undefined,
+      }
+
+      const nextPlans = state.plans.map((item) =>
+        item.id === approvedPlan.id ? approvedPlan : item,
+      )
+
+      const orderNo = nextNo('OD')
+      const newOrder: Order = {
+        id: nextId('order'),
+        number: orderNo,
+        planId: approvedPlan.id,
+        customerName: approvedPlan.customerName,
+        siteName: approvedPlan.siteName,
+        transportMode: approvedPlan.transportMode,
+        weighDiffRule: approvedPlan.weighDiffRule,
+        status: 'ordered',
+        threshold: 0.5,
+        settlementWeight: approvedPlan.plannedVolume,
+        diffAbnormal: false,
+      }
+
+      set({
+        plans: nextPlans,
+        orders: [newOrder, ...state.orders],
+        account: {
+          ...state.account,
+          occupied: ensureFixed(state.account.occupied - approvedPlan.totalAmount),
+          frozen: ensureFixed(state.account.frozen + approvedPlan.totalAmount),
+        },
+        ledgers: [
+          createLedger('freeze', approvedPlan.totalAmount, newOrder.number, '审批通过转冻结'),
+          ...state.ledgers,
+        ],
+        notifications: [
+          createNotification(
+            'approval',
+            '计划已审批通过',
+            `${approvedPlan.number} 已通过审批并生成订单 ${newOrder.number}`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    cancelPlan: (planId: string, reason: string) => {
+      const state = get()
+      const plan = state.plans.find((item) => item.id === planId)
+
+      if (!plan || ['approved', 'cancelled'].includes(plan.status)) {
+        return
+      }
+
+      const canRelease = ['submitted', 'returned'].includes(plan.status)
+      const nextPlans = state.plans.map((item) =>
+        item.id === planId
+          ? {
+              ...item,
+              status: 'cancelled' as const,
+              rejectReason: reason,
+            }
+          : item,
+      )
+
+      const accountDelta = canRelease
+        ? {
+            available: ensureFixed(state.account.available + plan.totalAmount),
+            occupied: ensureFixed(state.account.occupied - plan.totalAmount),
+          }
+        : {
+            available: state.account.available,
+            occupied: state.account.occupied,
+          }
+
+      set({
+        plans: nextPlans,
+        account: {
+          ...state.account,
+          ...accountDelta,
+        },
+        ledgers: canRelease
+          ? [
+              createLedger('release', plan.totalAmount, plan.number, '计划取消释放占用'),
+              ...state.ledgers,
+            ]
+          : state.ledgers,
+      })
+    },
+    confirmLoad: (input: LoadConfirmInput) => {
+      const state = get()
+      const nextOrders = state.orders.map((item) =>
+        item.id === input.orderId
+          ? {
+              ...item,
+              loadWeight: input.weight,
+              status: 'loaded' as const,
+            }
+          : item,
+      )
+
+      set({ orders: nextOrders })
+    },
+    confirmUnload: (input: UnloadConfirmInput) => {
+      const state = get()
+      let isAbnormal = false
+      let orderNo = ''
+
+      const nextOrders = state.orders.map((item) => {
+        if (item.id !== input.orderId) {
+          return item
+        }
+
+        const loadWeight = item.loadWeight ?? input.weight
+        const diff = Math.abs(loadWeight - input.weight)
+        isAbnormal = diff > item.threshold
+        orderNo = item.number
+
+        return {
+          ...item,
+          unloadWeight: input.weight,
+          diffAbnormal: isAbnormal,
+          status: isAbnormal ? ('settling' as const) : ('pending-acceptance' as const),
+          settlementWeight:
+            item.weighDiffRule === 'load'
+              ? loadWeight
+              : item.weighDiffRule === 'unload'
+                ? input.weight
+                : ensureFixed((loadWeight + input.weight) / 2),
+        }
+      })
+
+      set({
+        orders: nextOrders,
+        notifications: isAbnormal
+          ? [
+              createNotification(
+                'fulfillment',
+                '磅差异常提醒',
+                `${orderNo} 检测到磅差异常，请调度处理结算量。`,
+              ),
+              ...state.notifications,
+            ]
+          : state.notifications,
+      })
+    },
+    resolveDiffException: (orderId: string, settlementWeight: number, note: string) => {
+      const state = get()
+      const nextOrders = state.orders.map((item) =>
+        item.id === orderId
+          ? {
+              ...item,
+              settlementWeight,
+              exceptionNote: note,
+              diffAbnormal: false,
+              status: 'pending-acceptance' as const,
+            }
+          : item,
+      )
+
+      set({ orders: nextOrders })
+    },
+    acceptOrder: (orderId: string, accepted: boolean, settlementWeight: number) => {
+      const state = get()
+      const targetOrder = state.orders.find((item) => item.id === orderId)
+
+      if (!targetOrder) {
+        return
+      }
+
+      const nextStatus: OrderStatus = accepted ? 'accepted' : 'settling'
+      const nextOrders = state.orders.map((item) =>
+        item.id === orderId
+          ? {
+              ...item,
+              status: nextStatus,
+              settlementWeight,
+            }
+          : item,
+      )
+
+      set({
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'fulfillment',
+            accepted ? '订单已验收' : '验收未通过',
+            `${targetOrder.number} ${accepted ? '已完成验收' : '验收不通过，待处理'}`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    registerDeposit: (input: DepositInput) => {
+      const state = get()
+      const deposit: DepositRecord = {
+        id: nextId('dep'),
+        customerName: input.customerName,
+        amount: input.amount,
+        paidAt: input.paidAt,
+        receiptName: input.receiptName,
+        status: 'pending',
+      }
+
+      set({
+        deposits: [deposit, ...state.deposits],
+        notifications: [
+          createNotification('finance', '收到预存登记', `${deposit.customerName} 提交了预存登记`),
+          ...state.notifications,
+        ],
+      })
+    },
+    reviewDeposit: (
+      depositId: string,
+      action: 'confirm' | 'reject',
+      reviewer: string,
+      reason?: string,
+    ) => {
+      const state = get()
+      const target = state.deposits.find((item) => item.id === depositId)
+
+      if (!target || target.status !== 'pending') {
+        return
+      }
+
+      const nextDeposits = state.deposits.map((item) => {
+        if (item.id !== depositId) {
+          return item
+        }
+
+        return {
+          ...item,
+          status: action === 'confirm' ? ('confirmed' as const) : ('rejected' as const),
+          reviewer,
+          rejectReason: action === 'reject' ? reason : undefined,
+        }
+      })
+
+      if (action === 'confirm') {
+        set({
+          deposits: nextDeposits,
+          account: {
+            total: ensureFixed(state.account.total + target.amount),
+            available: ensureFixed(state.account.available + target.amount),
+            occupied: state.account.occupied,
+            frozen: state.account.frozen,
+          },
+          ledgers: [
+            createLedger('deposit', target.amount, target.id, '财务确认预存到账'),
+            ...state.ledgers,
+          ],
+        })
+
+        return
+      }
+
+      set({ deposits: nextDeposits })
+    },
+    applyStamp: (
+      statementId: string,
+      actorType: 'platform' | 'customer',
+      actor: string,
+    ) => {
+      const state = get()
+      const target = state.reconciliations.find((item) => item.id === statementId)
+
+      if (!target) {
+        return
+      }
+
+      if (actorType === 'platform' && target.status !== 'draft') {
+        return
+      }
+
+      if (actorType === 'customer' && target.status !== 'platform-stamped') {
+        return
+      }
+
+      const nextStatements = state.reconciliations.map((item) => {
+        if (item.id !== statementId) {
+          return item
+        }
+
+        const nextStatus =
+          actorType === 'platform' ? ('platform-stamped' as const) : ('double-confirmed' as const)
+
+        return {
+          ...item,
+          status: nextStatus,
+          stampLogs: [
+            ...item.stampLogs,
+            {
+              actorType,
+              actor,
+              stampedAt: now(),
+            },
+          ],
+        }
+      })
+
+      set({
+        reconciliations: nextStatements,
+        notifications: [
+          createNotification(
+            'system',
+            actorType === 'platform' ? '确认单已加盖公章' : '确认单双方签章完成',
+            `${target.number} 当前状态：${
+              actorType === 'platform' ? '待客户签章' : '双方已确认'
+            }`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    issueInvoice: (invoiceId: string, issuer: string) => {
+      const state = get()
+      const target = state.invoices.find((item) => item.id === invoiceId)
+
+      if (!target || target.status === 'issued') {
+        return
+      }
+
+      const nextInvoices = state.invoices.map((item) =>
+        item.id === invoiceId
+          ? {
+              ...item,
+              status: 'issued' as const,
+              issueDate: new Date().toISOString().slice(0, 10),
+            }
+          : item,
+      )
+
+      set({
+        invoices: nextInvoices,
+        notifications: [
+          createNotification(
+            'finance',
+            '发票已开具',
+            `${target.number} 已由 ${issuer} 完成开票并归档。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    reviewOnboarding: (input: ReviewOnboardingInput) => {
+      const state = get()
+      const target = state.onboardingApplications.find(
+        (item) => item.id === input.applicationId,
+      )
+
+      if (!target || target.status === 'activated') {
+        return
+      }
+
+      const nextStatus: OnboardingApplication['status'] =
+        input.action === 'approve' ? 'approved' : 'rejected'
+      const nextApplications = state.onboardingApplications.map((item) =>
+        item.id === input.applicationId
+          ? {
+              ...item,
+              status: nextStatus,
+              reviewer: input.reviewer,
+              rejectReason: input.action === 'reject' ? input.reason ?? '资料不完整' : undefined,
+              level: input.action === 'approve' ? input.level : item.level,
+            }
+          : item,
+      )
+
+      set({
+        onboardingApplications: nextApplications,
+        notifications: [
+          createNotification(
+            'approval',
+            input.action === 'approve' ? '入驻审核通过' : '入驻审核驳回',
+            `${target.organizationName} ${
+              input.action === 'approve' ? '已审核通过，待上传合同' : '审核未通过'
+            }`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    uploadOnboardingContract: (input: UploadOnboardingContractInput) => {
+      const state = get()
+      const target = state.onboardingApplications.find(
+        (item) => item.id === input.applicationId,
+      )
+
+      if (!target || target.status !== 'approved') {
+        return
+      }
+
+      const nextApplications = state.onboardingApplications.map((item) =>
+        item.id === input.applicationId
+          ? {
+              ...item,
+              contractName: input.contractName,
+              contractEffectiveDate: input.effectiveDate,
+              status: 'activated' as const,
+            }
+          : item,
+      )
+
+      set({
+        onboardingApplications: nextApplications,
+        notifications: [
+          createNotification(
+            'system',
+            '服务合同已上传',
+            `${target.organizationName} 已激活，可进入业务流程。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    archiveOrder: (orderId: string, operator: string): ArchiveActionResult => {
+      const state = get()
+      const target = state.orders.find((item) => item.id === orderId)
+
+      if (!target) {
+        return {
+          success: false,
+          error: '订单不存在',
+        }
+      }
+
+      if (!['accepted', 'settled'].includes(target.status)) {
+        return {
+          success: false,
+          error: '仅已验收/已结算订单可归档',
+        }
+      }
+
+      const nextOrders = state.orders.map((item) =>
+        item.id === orderId
+          ? {
+              ...item,
+              status: 'archived' as const,
+            }
+          : item,
+      )
+
+      set({
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'system',
+            '订单已归档',
+            `${target.number} 已由 ${operator} 归档，核心字段转为只读。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return { success: true }
+    },
+    unarchiveOrder: (orderId: string, operator: string): ArchiveActionResult => {
+      const state = get()
+      const target = state.orders.find((item) => item.id === orderId)
+
+      if (!target) {
+        return {
+          success: false,
+          error: '订单不存在',
+        }
+      }
+
+      if (target.status !== 'archived') {
+        return {
+          success: false,
+          error: '仅已归档订单支持取消归档',
+        }
+      }
+
+      const nextOrders = state.orders.map((item) =>
+        item.id === orderId
+          ? {
+              ...item,
+              status: 'settled' as const,
+            }
+          : item,
+      )
+
+      set({
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'system',
+            '订单取消归档',
+            `${target.number} 已由 ${operator} 取消归档。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return { success: true }
+    },
+    createException: (input: CreateExceptionInput): string => {
+      const state = get()
+      const exceptionId = nextId('exception')
+      const exceptionNo = nextNo('EX')
+      const exception: ExceptionCase = {
+        id: exceptionId,
+        number: exceptionNo,
+        type: input.type,
+        targetNo: input.targetNo,
+        reason: input.reason,
+        responsibilityParty: input.responsibilityParty,
+        amount: input.amount,
+        status: 'pending',
+        createdAt: now(),
+      }
+
+      set({
+        exceptions: [exception, ...state.exceptions],
+        notifications: [
+          createNotification(
+            'system',
+            '新增异常单待处理',
+            `${exception.number} 已创建，目标单据 ${exception.targetNo}`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return exceptionId
+    },
+    processException: (input: ProcessExceptionInput) => {
+      const state = get()
+      const target = state.exceptions.find((item) => item.id === input.exceptionId)
+
+      if (!target || target.status !== 'pending') {
+        return
+      }
+
+      const nextStatus: ExceptionCase['status'] =
+        input.action === 'approve' ? 'approved' : 'rejected'
+      const nextExceptions = state.exceptions.map((item) =>
+        item.id === input.exceptionId
+          ? {
+              ...item,
+              status: nextStatus,
+              reviewer: input.reviewer,
+              reviewedAt: now(),
+              note: input.note,
+            }
+          : item,
+      )
+
+      let nextPlans = state.plans
+      let nextOrders = state.orders
+
+      if (input.action === 'approve') {
+        if (target.type === 'plan-terminate') {
+          nextPlans = state.plans.map((item) =>
+            item.number === target.targetNo
+              ? { ...item, status: 'cancelled' as const, rejectReason: input.note ?? target.reason }
+              : item,
+          )
+        }
+
+        if (target.type === 'plan-change') {
+          nextPlans = state.plans.map((item) =>
+            item.number === target.targetNo
+              ? { ...item, status: 'changed' as const, rejectReason: input.note }
+              : item,
+          )
+        }
+
+        if (target.type === 'order-terminate') {
+          nextOrders = state.orders.map((item) =>
+            item.number === target.targetNo
+              ? { ...item, status: 'settling' as const, exceptionNote: input.note ?? target.reason }
+              : item,
+          )
+        }
+
+        if (['order-change', 'delta-adjustment'].includes(target.type)) {
+          nextOrders = state.orders.map((item) =>
+            item.number === target.targetNo
+              ? { ...item, exceptionNote: input.note ?? target.reason, status: 'settling' as const }
+              : item,
+          )
+        }
+      }
+
+      set({
+        exceptions: nextExceptions,
+        plans: nextPlans,
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'system',
+            input.action === 'approve' ? '异常单已审批通过' : '异常单已驳回',
+            `${target.number} 已由 ${input.reviewer} 处理。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    markNotificationRead: (notificationId: string) => {
+      const state = get()
+      const nextNotifications = state.notifications.map((item) =>
+        item.id === notificationId
+          ? {
+              ...item,
+              read: true,
+            }
+          : item,
+      )
+
+      set({ notifications: nextNotifications })
+    },
+  })
+
+export const createAppStore = (seed = defaultMockData()) => createStore<AppState>(createState(seed))
+
+export const appStore = createAppStore()
+
+export const useAppStore = <T,>(selector: (state: AppState) => T): T =>
+  useStore(appStore, selector)
