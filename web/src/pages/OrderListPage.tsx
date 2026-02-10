@@ -1,14 +1,33 @@
-import { Alert, Button, Card, Drawer, Space, Table, Typography } from 'antd'
+import { Alert, Button, Card, Drawer, Segmented, Space, Steps, Table, Typography, message } from 'antd'
 import { useMemo, useState } from 'react'
 import StatusBadge from '../components/StatusBadge'
 import { useAppStore, type Order } from '../store/useAppStore'
 import { formatMoney, formatWeight, orderStatusLabel } from '../utils/format'
+
+type OrderFilter = 'all' | 'pending-load' | 'in-transit' | 'pending-acceptance' | 'completed'
+
+const getProgressStep = (status: Order['status']) => {
+  if (['pending-supplement', 'ordered', 'stocking'].includes(status)) {
+    return 0
+  }
+  if (status === 'loaded') {
+    return 1
+  }
+  if (['transporting', 'arrived'].includes(status)) {
+    return 2
+  }
+  if (status === 'pending-acceptance') {
+    return 3
+  }
+  return 4
+}
 
 function OrderListPage() {
   const orders = useAppStore((state) => state.orders)
   const account = useAppStore((state) => state.account)
   const plans = useAppStore((state) => state.plans)
   const [activeOrderId, setActiveOrderId] = useState<string>()
+  const [filter, setFilter] = useState<OrderFilter>('all')
 
   const activeOrder = useMemo(
     () => orders.find((item) => item.id === activeOrderId),
@@ -18,6 +37,29 @@ function OrderListPage() {
     () => plans.find((item) => item.id === activeOrder?.planId),
     [activeOrder?.planId, plans],
   )
+  const filteredOrders = useMemo(() => {
+    if (filter === 'all') {
+      return orders
+    }
+
+    if (filter === 'pending-load') {
+      return orders.filter((item) => ['pending-supplement', 'ordered', 'stocking', 'loaded'].includes(item.status))
+    }
+
+    if (filter === 'in-transit') {
+      return orders.filter((item) => ['transporting', 'arrived'].includes(item.status))
+    }
+
+    if (filter === 'pending-acceptance') {
+      return orders.filter((item) => item.status === 'pending-acceptance')
+    }
+
+    return orders.filter((item) => ['accepted', 'settling', 'settled', 'archived'].includes(item.status))
+  }, [filter, orders])
+
+  const downloadMock = (name: string) => {
+    message.success(`${name} 下载已触发（Mock）`)
+  }
 
   return (
     <div className="page-section">
@@ -33,9 +75,21 @@ function OrderListPage() {
       />
 
       <Card>
+        <Segmented<OrderFilter>
+          style={{ marginBottom: 12 }}
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { label: '全部', value: 'all' },
+            { label: '待装/装车', value: 'pending-load' },
+            { label: '运输中', value: 'in-transit' },
+            { label: '待验收', value: 'pending-acceptance' },
+            { label: '已完成', value: 'completed' },
+          ]}
+        />
         <Table
           rowKey="id"
-          dataSource={orders}
+          dataSource={filteredOrders}
           pagination={false}
           columns={[
             {
@@ -79,6 +133,17 @@ function OrderListPage() {
       >
         {activeOrder ? (
           <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Steps
+              size="small"
+              current={getProgressStep(activeOrder.status)}
+              items={[
+                { title: '下单/备货' },
+                { title: '装车确认' },
+                { title: '运输送达' },
+                { title: '待验收' },
+                { title: '结算归档' },
+              ]}
+            />
             <Typography.Text>
               <strong>订单编号：</strong>
               {activeOrder.number}
@@ -119,6 +184,55 @@ function OrderListPage() {
               <strong>已冻结金额：</strong>
               {formatMoney(account.frozen)}
             </Typography.Text>
+
+            <Card title="单据中心（Mock）" size="small">
+              <Space wrap>
+                <Button
+                  size="small"
+                  disabled={!activeOrder.supplementDocName}
+                  onClick={() =>
+                    downloadMock(activeOrder.supplementDocName ?? `${activeOrder.number}-supplement.pdf`)
+                  }
+                >
+                  补录单据
+                </Button>
+                <Button
+                  size="small"
+                  disabled={typeof activeOrder.loadWeight !== 'number'}
+                  onClick={() => downloadMock(`${activeOrder.number}-装车磅单.pdf`)}
+                >
+                  装车磅单
+                </Button>
+                <Button
+                  size="small"
+                  disabled={typeof activeOrder.unloadWeight !== 'number'}
+                  onClick={() => downloadMock(`${activeOrder.number}-卸车磅单.pdf`)}
+                >
+                  卸车磅单
+                </Button>
+                <Button
+                  size="small"
+                  disabled={!['accepted', 'settling', 'settled', 'archived'].includes(activeOrder.status)}
+                  onClick={() => downloadMock(`${activeOrder.number}-气化率单.pdf`)}
+                >
+                  气化率单
+                </Button>
+                <Button
+                  size="small"
+                  disabled={!['settling', 'settled', 'archived'].includes(activeOrder.status)}
+                  onClick={() => downloadMock(`${activeOrder.number}-确认单.pdf`)}
+                >
+                  对账确认单
+                </Button>
+                <Button
+                  size="small"
+                  disabled={!['settled', 'archived'].includes(activeOrder.status)}
+                  onClick={() => downloadMock(`${activeOrder.number}-发票.pdf`)}
+                >
+                  发票
+                </Button>
+              </Space>
+            </Card>
           </Space>
         ) : null}
       </Drawer>

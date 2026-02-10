@@ -215,6 +215,7 @@ describe('app store domain flow', () => {
 
     expect(exception?.status).toBe('approved')
     expect(exception?.reviewer).toBe('市场部-审批员')
+    expect(store.getState().plans.find((item) => item.number === 'PL-20260209-001')?.status).toBe('changed')
   })
 
   it('approves onboarding and activates organization after contract upload', () => {
@@ -343,6 +344,9 @@ describe('app store domain flow', () => {
       name: '南京江北卸气站',
       type: 'unload',
       status: 'enabled',
+      address: '江苏省南京市浦口区临港大道 18 号',
+      contactName: '周亮',
+      contactPhone: '13900001234',
       maintenancePolicy: 'manual',
       maintenanceWindow: '2026-02-10 ~ 2026-02-12',
     })
@@ -351,6 +355,9 @@ describe('app store domain flow', () => {
       siteId,
       patch: {
         name: '南京江北综合站',
+        address: '江苏省南京市浦口区临港大道 20 号',
+        contactName: '周亮',
+        contactPhone: '13900004567',
         maintenancePolicy: 'block',
       },
     })
@@ -358,6 +365,9 @@ describe('app store domain flow', () => {
 
     const site = store.getState().sites.find((item) => item.id === siteId)
     expect(site?.name).toBe('南京江北综合站')
+    expect((site as { address?: string } | undefined)?.address).toBe('江苏省南京市浦口区临港大道 20 号')
+    expect((site as { contactName?: string } | undefined)?.contactName).toBe('周亮')
+    expect((site as { contactPhone?: string } | undefined)?.contactPhone).toBe('13900004567')
     expect(site?.status).toBe('disabled')
     expect(site?.maintenancePolicy).toBe('block')
   })
@@ -368,7 +378,10 @@ describe('app store domain flow', () => {
     const vehicleId = store.getState().addVehicle({
       plateNo: '苏C·LNG66',
       capacity: 30,
+      model: 'LNG槽车-40方',
+      tankVolume: 40,
       certExpiry: '2026-10-31',
+      certFile: 'vehicle-cert-66.pdf',
       valid: true,
     })
 
@@ -377,6 +390,7 @@ describe('app store domain flow', () => {
       patch: {
         capacity: 32,
         certExpiry: '2026-11-30',
+        certFile: 'vehicle-cert-66-v2.pdf',
       },
     })
     store.getState().disableVehicle(vehicleId)
@@ -384,6 +398,10 @@ describe('app store domain flow', () => {
     const personId = store.getState().addPerson({
       name: '周航',
       role: 'driver',
+      phone: '13800008888',
+      idNo: '320106198905012233',
+      certFile: 'driver-cert-zhouhang.pdf',
+      organizationName: '华东承运物流有限公司',
       certExpiry: '2026-09-30',
       valid: true,
     })
@@ -392,6 +410,7 @@ describe('app store domain flow', () => {
       personId,
       patch: {
         role: 'escort',
+        certFile: 'escort-cert-zhouhang.pdf',
       },
     })
     store.getState().disablePerson(personId)
@@ -400,9 +419,37 @@ describe('app store domain flow', () => {
     const person = store.getState().personnel.find((item) => item.id === personId)
 
     expect(vehicle?.capacity).toBe(32)
+    expect((vehicle as { certFile?: string } | undefined)?.certFile).toBe('vehicle-cert-66-v2.pdf')
     expect(vehicle?.valid).toBe(false)
     expect(person?.role).toBe('escort')
+    expect((person as { idNo?: string } | undefined)?.idNo).toBe('320106198905012233')
+    expect((person as { certFile?: string } | undefined)?.certFile).toBe('escort-cert-zhouhang.pdf')
     expect(person?.valid).toBe(false)
+  })
+
+  it('stores plan schedule fields from plan creation', () => {
+    const store = createAppStore(defaultMockData())
+    const result = store.getState().createPlan({
+      siteId: 'site-01',
+      priceId: 'price-public-1',
+      plannedVolume: 12,
+      freightFee: 800,
+      transportMode: 'upstream',
+      paymentMethod: 'prepaid',
+      weighDiffRule: 'load',
+      agreementChecked: true,
+      planDate: '2026-02-12',
+      timeWindow: '08:00-12:00',
+    })
+
+    expect(result.success).toBe(true)
+
+    const created = store
+      .getState()
+      .plans.find((item) => item.id === result.planId)
+
+    expect((created as { planDate?: string } | undefined)?.planDate).toBe('2026-02-12')
+    expect((created as { timeWindow?: string } | undefined)?.timeWindow).toBe('08:00-12:00')
   })
 
   it('submits and approves order supplement workflow', () => {
@@ -485,6 +532,23 @@ describe('app store domain flow', () => {
       verifyCode: '123456',
     })
     expect(loginResult.success).toBe(true)
+  })
+
+  it('supports upstream organization registration flow', () => {
+    const store = createAppStore(defaultMockData())
+    const registerResult = store.getState().registerAccount({
+      organizationName: '浙江海港气源有限公司',
+      contactName: '蒋涛',
+      phone: '13800138113',
+      password: 'init123',
+      role: 'upstream',
+      verifyCode: '123456',
+    })
+
+    expect(registerResult.success).toBe(true)
+    expect(store.getState().authUsers[0].role).toBe('upstream')
+    expect(store.getState().onboardingApplications[0].organizationType).toBe('upstream')
+    expect(store.getState().onboardingApplications[0].status).toBe('pending')
   })
 
   it('creates onboarding application when external account registers', () => {

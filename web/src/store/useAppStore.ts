@@ -3,6 +3,7 @@ import { useStore } from 'zustand'
 
 export type RoleKey =
   | 'terminal'
+  | 'upstream'
   | 'market'
   | 'dispatch'
   | 'finance'
@@ -49,6 +50,9 @@ export interface AuthUser {
 export interface Site {
   id: string
   name: string
+  address?: string
+  contactName?: string
+  contactPhone?: string
   type: 'load' | 'unload' | 'use'
   status: 'enabled' | 'disabled' | 'maintenance'
   maintenancePolicy?: 'block' | 'manual'
@@ -58,14 +62,21 @@ export interface Site {
 export interface Vehicle {
   id: string
   plateNo: string
+  model?: string
+  tankVolume?: number
   capacity: number
   valid: boolean
   certExpiry: string
+  certFile?: string
 }
 
 export interface Person {
   id: string
   name: string
+  phone?: string
+  idNo?: string
+  certFile?: string
+  organizationName?: string
   role: 'driver' | 'escort'
   valid: boolean
   certExpiry: string
@@ -96,6 +107,8 @@ export interface Plan {
   customerName: string
   siteId: string
   siteName: string
+  planDate?: string
+  timeWindow?: string
   priceId: string
   plannedVolume: number
   unitPrice: number
@@ -310,6 +323,8 @@ export interface DailyPlanReport {
 export interface PlanInput {
   siteId: string
   priceId: string
+  planDate?: string
+  timeWindow?: string
   plannedVolume: number
   freightFee: number
   transportMode: TransportMode
@@ -397,6 +412,9 @@ export interface ProcessExceptionInput {
 
 export interface AddSiteInput {
   name: string
+  address?: string
+  contactName?: string
+  contactPhone?: string
   type: Site['type']
   status?: Site['status']
   maintenancePolicy?: Site['maintenancePolicy']
@@ -406,24 +424,43 @@ export interface AddSiteInput {
 export interface UpdateSiteInput {
   siteId: string
   patch: Partial<
-    Pick<Site, 'name' | 'type' | 'status' | 'maintenancePolicy' | 'maintenanceWindow'>
+    Pick<
+      Site,
+      | 'name'
+      | 'address'
+      | 'contactName'
+      | 'contactPhone'
+      | 'type'
+      | 'status'
+      | 'maintenancePolicy'
+      | 'maintenanceWindow'
+    >
   >
 }
 
 export interface AddVehicleInput {
   plateNo: string
+  model?: string
+  tankVolume?: number
   capacity: number
   certExpiry: string
+  certFile?: string
   valid: boolean
 }
 
 export interface UpdateVehicleInput {
   vehicleId: string
-  patch: Partial<Pick<Vehicle, 'plateNo' | 'capacity' | 'certExpiry' | 'valid'>>
+  patch: Partial<
+    Pick<Vehicle, 'plateNo' | 'model' | 'tankVolume' | 'capacity' | 'certExpiry' | 'certFile' | 'valid'>
+  >
 }
 
 export interface AddPersonInput {
   name: string
+  phone?: string
+  idNo?: string
+  certFile?: string
+  organizationName?: string
   role: Person['role']
   certExpiry: string
   valid: boolean
@@ -431,7 +468,9 @@ export interface AddPersonInput {
 
 export interface UpdatePersonInput {
   personId: string
-  patch: Partial<Pick<Person, 'name' | 'role' | 'certExpiry' | 'valid'>>
+  patch: Partial<
+    Pick<Person, 'name' | 'phone' | 'idNo' | 'certFile' | 'organizationName' | 'role' | 'certExpiry' | 'valid'>
+  >
 }
 
 export interface SubmitOrderSupplementInput {
@@ -734,6 +773,14 @@ export const defaultMockData = (): AppSeed => ({
       role: 'market',
     },
     {
+      id: 'auth-upstream-01',
+      phone: '13800138006',
+      password: '123456',
+      contactName: '宋经理',
+      organizationName: '江苏上游气源有限公司',
+      role: 'upstream',
+    },
+    {
       id: 'auth-dispatch-01',
       phone: '13800138002',
       password: '123456',
@@ -779,12 +826,18 @@ export const defaultMockData = (): AppSeed => ({
     {
       id: 'site-01',
       name: '苏州工业园卸气站',
+      address: '苏州市工业园区唯新路 88 号',
+      contactName: '周亮',
+      contactPhone: '13900001234',
       type: 'unload',
       status: 'enabled',
     },
     {
       id: 'site-02',
       name: '常州西港卸气站',
+      address: '常州市新北区港城大道 16 号',
+      contactName: '徐杰',
+      contactPhone: '13900004567',
       type: 'unload',
       status: 'maintenance',
       maintenancePolicy: 'block',
@@ -793,6 +846,9 @@ export const defaultMockData = (): AppSeed => ({
     {
       id: 'site-03',
       name: '无锡北站用气点',
+      address: '无锡市惠山区北环路 66 号',
+      contactName: '李青',
+      contactPhone: '13900007890',
       type: 'use',
       status: 'enabled',
     },
@@ -801,22 +857,32 @@ export const defaultMockData = (): AppSeed => ({
     {
       id: 'vehicle-01',
       plateNo: '苏A·LNG88',
+      model: 'LNG槽车-45方',
+      tankVolume: 45,
       capacity: 35,
       valid: true,
       certExpiry: '2026-12-31',
+      certFile: 'vehicle-01-license.pdf',
     },
     {
       id: 'vehicle-02',
       plateNo: '苏B·LNG12',
+      model: 'LNG槽车-32方',
+      tankVolume: 32,
       capacity: 25,
       valid: false,
       certExpiry: '2026-01-15',
+      certFile: 'vehicle-02-license.pdf',
     },
   ],
   personnel: [
     {
       id: 'person-01',
       name: '赵强',
+      phone: '13800000001',
+      idNo: '320106198905012233',
+      certFile: 'driver-zhaoqiang.pdf',
+      organizationName: '华东承运物流有限公司',
       role: 'driver',
       valid: true,
       certExpiry: '2026-08-31',
@@ -824,6 +890,10 @@ export const defaultMockData = (): AppSeed => ({
     {
       id: 'person-02',
       name: '王敏',
+      phone: '13800000002',
+      idNo: '320106199002153278',
+      certFile: 'escort-wangmin.pdf',
+      organizationName: '华东承运物流有限公司',
       role: 'escort',
       valid: true,
       certExpiry: '2026-09-30',
@@ -831,6 +901,10 @@ export const defaultMockData = (): AppSeed => ({
     {
       id: 'person-03',
       name: '李凯',
+      phone: '13800000003',
+      idNo: '320106198612012199',
+      certFile: 'driver-likai.pdf',
+      organizationName: '华东承运物流有限公司',
       role: 'driver',
       valid: false,
       certExpiry: '2025-12-31',
@@ -889,6 +963,8 @@ export const defaultMockData = (): AppSeed => ({
       customerName: '华东能源科技有限公司',
       siteId: 'site-01',
       siteName: '苏州工业园卸气站',
+      planDate: '2026-02-10',
+      timeWindow: '08:00-12:00',
       priceId: 'price-exclusive-a',
       plannedVolume: 22,
       unitPrice: 4200,
@@ -913,6 +989,8 @@ export const defaultMockData = (): AppSeed => ({
       customerName: '华东能源科技有限公司',
       siteId: 'site-03',
       siteName: '无锡北站用气点',
+      planDate: '2026-02-10',
+      timeWindow: '13:00-18:00',
       priceId: 'price-public-1',
       plannedVolume: 18,
       unitPrice: 3950,
@@ -1127,6 +1205,11 @@ export const defaultMockData = (): AppSeed => ({
       { id: 'tm-1', title: '账户可用余额', value: '¥160,000.00', trend: '+12%' },
       { id: 'tm-2', title: '待审批计划', value: '1 单' },
       { id: 'tm-3', title: '运输中订单', value: '1 单' },
+    ],
+    upstream: [
+      { id: 'up-1', title: '待装车录入', value: '1 单' },
+      { id: 'up-2', title: '本周协同订单', value: '4 单' },
+      { id: 'up-3', title: '待补录单据', value: '1 条' },
     ],
     market: [
       { id: 'mk-1', title: '待审批计划', value: '1 单', trend: '+2' },
@@ -1638,6 +1721,9 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
       const site: Site = {
         id: siteId,
         name: input.name.trim(),
+        address: input.address?.trim() || undefined,
+        contactName: input.contactName?.trim() || undefined,
+        contactPhone: input.contactPhone?.trim() || undefined,
         type: input.type,
         status: input.status ?? 'enabled',
         maintenancePolicy: input.maintenancePolicy,
@@ -1664,6 +1750,18 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
               ...item,
               ...input.patch,
               name: input.patch.name?.trim() || item.name,
+              address:
+                input.patch.address === undefined
+                  ? item.address
+                  : input.patch.address.trim() || undefined,
+              contactName:
+                input.patch.contactName === undefined
+                  ? item.contactName
+                  : input.patch.contactName.trim() || undefined,
+              contactPhone:
+                input.patch.contactPhone === undefined
+                  ? item.contactPhone
+                  : input.patch.contactPhone.trim() || undefined,
               maintenanceWindow:
                 input.patch.maintenanceWindow === undefined
                   ? item.maintenanceWindow
@@ -1699,8 +1797,11 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
       const vehicle: Vehicle = {
         id: vehicleId,
         plateNo: input.plateNo.trim(),
+        model: input.model?.trim() || undefined,
+        tankVolume: input.tankVolume,
         capacity: input.capacity,
         certExpiry: input.certExpiry,
+        certFile: input.certFile?.trim() || undefined,
         valid: input.valid,
       }
 
@@ -1724,6 +1825,14 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
               ...item,
               ...input.patch,
               plateNo: input.patch.plateNo?.trim() || item.plateNo,
+              model:
+                input.patch.model === undefined
+                  ? item.model
+                  : input.patch.model.trim() || undefined,
+              certFile:
+                input.patch.certFile === undefined
+                  ? item.certFile
+                  : input.patch.certFile.trim() || undefined,
             }
           : item,
       )
@@ -1755,6 +1864,10 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
       const person: Person = {
         id: personId,
         name: input.name.trim(),
+        phone: input.phone?.trim() || undefined,
+        idNo: input.idNo?.trim() || undefined,
+        certFile: input.certFile?.trim() || undefined,
+        organizationName: input.organizationName?.trim() || undefined,
         role: input.role,
         certExpiry: input.certExpiry,
         valid: input.valid,
@@ -1780,6 +1893,22 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
               ...item,
               ...input.patch,
               name: input.patch.name?.trim() || item.name,
+              phone:
+                input.patch.phone === undefined
+                  ? item.phone
+                  : input.patch.phone.trim() || undefined,
+              idNo:
+                input.patch.idNo === undefined
+                  ? item.idNo
+                  : input.patch.idNo.trim() || undefined,
+              certFile:
+                input.patch.certFile === undefined
+                  ? item.certFile
+                  : input.patch.certFile.trim() || undefined,
+              organizationName:
+                input.patch.organizationName === undefined
+                  ? item.organizationName
+                  : input.patch.organizationName.trim() || undefined,
             }
           : item,
       )
@@ -1998,6 +2127,8 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         customerName: state.activeCustomerName,
         siteId: site.id,
         siteName: site.name,
+        planDate: input.planDate,
+        timeWindow: input.timeWindow,
         priceId: gasPrice.id,
         plannedVolume: input.plannedVolume,
         unitPrice,

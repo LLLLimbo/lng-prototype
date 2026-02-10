@@ -56,6 +56,7 @@ function RegisterPage() {
             <Select
               options={[
                 { label: '终端用户', value: 'terminal' },
+                { label: '上游气源公司', value: 'upstream' },
                 { label: '承运商管理员', value: 'carrier' },
                 { label: '司机/押运员', value: 'driver' },
               ]}

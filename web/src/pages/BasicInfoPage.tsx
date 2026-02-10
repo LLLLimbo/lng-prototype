@@ -19,6 +19,9 @@ import { type Person, type Site, useAppStore, type Vehicle } from '../store/useA
 
 interface SiteFormValue {
   name: string
+  address?: string
+  contactName?: string
+  contactPhone?: string
   type: Site['type']
   status: Site['status']
   maintenancePolicy?: Site['maintenancePolicy']
@@ -27,13 +30,20 @@ interface SiteFormValue {
 
 interface VehicleFormValue {
   plateNo: string
+  model?: string
+  tankVolume?: number
   capacity: number
   certExpiry: string
+  certFile?: string
   valid: boolean
 }
 
 interface PersonFormValue {
   name: string
+  phone?: string
+  idNo?: string
+  certFile?: string
+  organizationName?: string
   role: Person['role']
   certExpiry: string
   valid: boolean
@@ -92,6 +102,9 @@ function BasicInfoPage() {
     setEditingSiteId(undefined)
     siteForm.setFieldsValue({
       name: '',
+      address: '',
+      contactName: '',
+      contactPhone: '',
       type: 'unload',
       status: 'enabled',
       maintenancePolicy: undefined,
@@ -104,6 +117,9 @@ function BasicInfoPage() {
     setEditingSiteId(site.id)
     siteForm.setFieldsValue({
       name: site.name,
+      address: site.address,
+      contactName: site.contactName,
+      contactPhone: site.contactPhone,
       type: site.type,
       status: site.status,
       maintenancePolicy: site.maintenancePolicy,
@@ -133,8 +149,11 @@ function BasicInfoPage() {
     setEditingVehicleId(undefined)
     vehicleForm.setFieldsValue({
       plateNo: '',
+      model: '',
+      tankVolume: 40,
       capacity: 30,
       certExpiry: '',
+      certFile: '',
       valid: true,
     })
     setVehicleModalOpen(true)
@@ -144,8 +163,11 @@ function BasicInfoPage() {
     setEditingVehicleId(vehicle.id)
     vehicleForm.setFieldsValue({
       plateNo: vehicle.plateNo,
+      model: vehicle.model,
+      tankVolume: vehicle.tankVolume,
       capacity: vehicle.capacity,
       certExpiry: vehicle.certExpiry,
+      certFile: vehicle.certFile,
       valid: vehicle.valid,
     })
     setVehicleModalOpen(true)
@@ -172,6 +194,10 @@ function BasicInfoPage() {
     setEditingPersonId(undefined)
     personForm.setFieldsValue({
       name: '',
+      phone: '',
+      idNo: '',
+      certFile: '',
+      organizationName: '',
       role: 'driver',
       certExpiry: '',
       valid: true,
@@ -183,6 +209,10 @@ function BasicInfoPage() {
     setEditingPersonId(person.id)
     personForm.setFieldsValue({
       name: person.name,
+      phone: person.phone,
+      idNo: person.idNo,
+      certFile: person.certFile,
+      organizationName: person.organizationName,
       role: person.role,
       certExpiry: person.certExpiry,
       valid: person.valid,
@@ -241,9 +271,22 @@ function BasicInfoPage() {
                   columns={[
                     { title: '站点名称', dataIndex: 'name' },
                     {
+                      title: '地址',
+                      dataIndex: 'address',
+                      render: (value?: string) => value ?? '--',
+                    },
+                    {
                       title: '站点类型',
                       dataIndex: 'type',
                       render: (value: Site['type']) => siteTypeLabelMap[value],
+                    },
+                    {
+                      title: '联系人',
+                      key: 'contact',
+                      render: (_, record: Site) =>
+                        record.contactName && record.contactPhone
+                          ? `${record.contactName} / ${record.contactPhone}`
+                          : '--',
                     },
                     {
                       title: '状态',
@@ -309,12 +352,27 @@ function BasicInfoPage() {
                   columns={[
                     { title: '车牌号', dataIndex: 'plateNo' },
                     {
+                      title: '车型/罐容',
+                      key: 'model',
+                      render: (_, record: Vehicle) =>
+                        record.model
+                          ? `${record.model}${record.tankVolume ? ` / ${record.tankVolume}方` : ''}`
+                          : record.tankVolume
+                            ? `${record.tankVolume}方`
+                            : '--',
+                    },
+                    {
                       title: '载重（吨）',
                       dataIndex: 'capacity',
                       align: 'right',
                       render: (value: number) => value.toFixed(1),
                     },
                     { title: '资质有效期', dataIndex: 'certExpiry' },
+                    {
+                      title: '资质附件',
+                      dataIndex: 'certFile',
+                      render: (value?: string) => value ?? '--',
+                    },
                     {
                       title: '资质状态',
                       dataIndex: 'valid',
@@ -371,11 +429,31 @@ function BasicInfoPage() {
                   columns={[
                     { title: '姓名', dataIndex: 'name' },
                     {
+                      title: '联系电话',
+                      dataIndex: 'phone',
+                      render: (value?: string) => value ?? '--',
+                    },
+                    {
                       title: '角色',
                       dataIndex: 'role',
                       render: (value: Person['role']) => personRoleLabelMap[value],
                     },
+                    {
+                      title: '证件号',
+                      dataIndex: 'idNo',
+                      render: (value?: string) => value ?? '--',
+                    },
                     { title: '证件有效期', dataIndex: 'certExpiry' },
+                    {
+                      title: '资质附件',
+                      dataIndex: 'certFile',
+                      render: (value?: string) => value ?? '--',
+                    },
+                    {
+                      title: '所属组织',
+                      dataIndex: 'organizationName',
+                      render: (value?: string) => value ?? '--',
+                    },
                     {
                       title: '状态',
                       dataIndex: 'valid',
@@ -427,6 +505,15 @@ function BasicInfoPage() {
           <Form.Item label="站点名称" name="name" rules={[{ required: true, message: '请输入站点名称' }]}>
             <Input placeholder="例如：无锡北站用气点" />
           </Form.Item>
+          <Form.Item label="站点地址" name="address">
+            <Input placeholder="例如：无锡市惠山区北环路 66 号" />
+          </Form.Item>
+          <Form.Item label="联系人" name="contactName">
+            <Input placeholder="例如：李青" />
+          </Form.Item>
+          <Form.Item label="联系电话" name="contactPhone">
+            <Input placeholder="例如：13900007890" />
+          </Form.Item>
           <Form.Item label="站点类型" name="type" rules={[{ required: true, message: '请选择站点类型' }]}>
             <Select
               options={[
@@ -472,6 +559,12 @@ function BasicInfoPage() {
           <Form.Item label="车牌号" name="plateNo" rules={[{ required: true, message: '请输入车牌号' }]}>
             <Input placeholder="例如：苏A·LNG88" />
           </Form.Item>
+          <Form.Item label="车型" name="model">
+            <Input placeholder="例如：LNG槽车-45方" />
+          </Form.Item>
+          <Form.Item label="罐容（方）" name="tankVolume">
+            <InputNumber min={1} precision={1} style={{ width: '100%' }} />
+          </Form.Item>
           <Form.Item
             label="载重（吨）"
             name="capacity"
@@ -485,6 +578,9 @@ function BasicInfoPage() {
             rules={[{ required: true, message: '请输入有效期' }]}
           >
             <Input placeholder="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item label="资质附件名" name="certFile">
+            <Input placeholder="例如：vehicle-01-license.pdf" />
           </Form.Item>
           <Form.Item label="资质状态" name="valid" rules={[{ required: true, message: '请选择状态' }]}>
             <Select
@@ -507,6 +603,18 @@ function BasicInfoPage() {
         <Form form={personForm} layout="vertical">
           <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input placeholder="例如：赵强" />
+          </Form.Item>
+          <Form.Item label="手机号" name="phone">
+            <Input placeholder="例如：13800000001" />
+          </Form.Item>
+          <Form.Item label="证件号" name="idNo">
+            <Input placeholder="例如：320106198905012233" />
+          </Form.Item>
+          <Form.Item label="资质附件名" name="certFile">
+            <Input placeholder="例如：driver-zhaoqiang.pdf" />
+          </Form.Item>
+          <Form.Item label="所属组织" name="organizationName">
+            <Input placeholder="例如：华东承运物流有限公司" />
           </Form.Item>
           <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]}>
             <Select

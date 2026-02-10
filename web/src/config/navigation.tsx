@@ -37,14 +37,14 @@ export const appMenus: AppMenuItem[] = [
     label: '工作台',
     path: '/app/dashboard',
     icon: <DashboardOutlined />,
-    roles: ['terminal', 'market', 'dispatch', 'finance', 'carrier', 'driver'],
+    roles: ['terminal', 'upstream', 'market', 'dispatch', 'finance', 'carrier', 'driver'],
   },
   {
     key: 'gas-price',
     label: '气价查看',
     path: '/app/gas-price',
     icon: <BarChartOutlined />,
-    roles: ['terminal', 'market'],
+    roles: ['terminal', 'upstream', 'market'],
   },
   {
     key: 'plan-create',
@@ -86,28 +86,28 @@ export const appMenus: AppMenuItem[] = [
     label: '入驻通知',
     path: '/app/onboarding/status',
     icon: <AuditOutlined />,
-    roles: ['terminal', 'carrier', 'driver'],
+    roles: ['terminal', 'upstream', 'carrier'],
   },
   {
     key: 'onboarding-submit',
     label: '资料提交',
     path: '/app/onboarding/submit',
     icon: <AuditOutlined />,
-    roles: ['terminal', 'carrier', 'driver'],
+    roles: ['terminal', 'upstream', 'carrier'],
   },
   {
     key: 'basic-info',
     label: '基础信息',
     path: '/app/basic-info',
     icon: <ApartmentOutlined />,
-    roles: ['terminal', 'market', 'dispatch', 'carrier'],
+    roles: ['terminal', 'upstream', 'market', 'dispatch', 'carrier'],
   },
   {
     key: 'order-manage',
     label: '订单补录审核',
     path: '/app/orders/manage',
     icon: <ContainerOutlined />,
-    roles: ['market', 'dispatch'],
+    roles: ['upstream', 'market', 'dispatch'],
   },
   {
     key: 'order-list',
@@ -121,7 +121,7 @@ export const appMenus: AppMenuItem[] = [
     label: '履约看板',
     path: '/app/orders/fulfillment',
     icon: <TruckOutlined />,
-    roles: ['dispatch', 'carrier', 'driver'],
+    roles: ['upstream', 'dispatch', 'carrier', 'driver'],
   },
   {
     key: 'order-acceptance',
@@ -156,14 +156,14 @@ export const appMenus: AppMenuItem[] = [
     label: '附件中心',
     path: '/app/attachments',
     icon: <PaperClipOutlined />,
-    roles: ['terminal', 'market', 'dispatch', 'finance', 'carrier'],
+    roles: ['terminal', 'upstream', 'market', 'dispatch', 'finance', 'carrier'],
   },
   {
     key: 'messages',
     label: '消息中心',
     path: '/app/messages',
     icon: <MessageOutlined />,
-    roles: ['terminal', 'market', 'dispatch', 'finance', 'carrier', 'driver'],
+    roles: ['terminal', 'upstream', 'market', 'dispatch', 'finance', 'carrier', 'driver'],
   },
   {
     key: 'mobile',
@@ -204,6 +204,7 @@ export const appMenus: AppMenuItem[] = [
 
 export const roleLabelMap: Record<RoleKey, string> = {
   terminal: '终端用户',
+  upstream: '上游气源公司',
   market: '市场部',
   dispatch: '调度中心',
   finance: '财务部',
@@ -213,6 +214,7 @@ export const roleLabelMap: Record<RoleKey, string> = {
 
 export const rolePathFallback: Record<RoleKey, string> = {
   terminal: '/app/dashboard',
+  upstream: '/app/orders/fulfillment',
   market: '/app/plans/approval',
   dispatch: '/app/orders/fulfillment',
   finance: '/app/reports',

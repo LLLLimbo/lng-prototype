@@ -4,6 +4,8 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
+  Modal,
   Popconfirm,
   Space,
   Table,
@@ -28,13 +30,41 @@ const statusTypeMap: Record<Plan['status'], 'draft' | 'pending' | 'success' | 'd
 function PlanListPage() {
   const plans = useAppStore((state) => state.plans)
   const cancelPlan = useAppStore((state) => state.cancelPlan)
+  const createException = useAppStore((state) => state.createException)
   const [activePlanId, setActivePlanId] = useState<string>()
   const [cancelReason, setCancelReason] = useState('')
+  const [changeTarget, setChangeTarget] = useState<Plan>()
+  const [changeReason, setChangeReason] = useState('')
+  const [changeAmount, setChangeAmount] = useState<number>(0)
 
   const activePlan = useMemo(
     () => plans.find((item) => item.id === activePlanId),
     [activePlanId, plans],
   )
+
+  const submitChangeRequest = () => {
+    if (!changeTarget) {
+      return
+    }
+
+    if (!changeReason.trim()) {
+      message.error('请填写变更原因')
+      return
+    }
+
+    createException({
+      type: 'plan-change',
+      targetNo: changeTarget.number,
+      reason: changeReason.trim(),
+      responsibilityParty: '终端用户',
+      amount: changeAmount,
+    })
+
+    message.success('变更申请已提交，待审批')
+    setChangeTarget(undefined)
+    setChangeReason('')
+    setChangeAmount(0)
+  }
 
   return (
     <div className="page-section">
@@ -46,7 +76,7 @@ function PlanListPage() {
         type="info"
         style={{ marginBottom: 16 }}
         message="支持规则"
-        description="草稿、待审核、已退回状态可取消；取消后会自动释放占用金额。"
+        description="草稿、待审核、已退回状态可取消；待审核/已批准可发起变更申请，取消后会自动释放占用金额。"
       />
 
       <Table
@@ -92,38 +122,57 @@ function PlanListPage() {
             title: '操作',
             key: 'action',
             fixed: 'right',
-            width: 180,
+            width: 260,
             render: (_, record: Plan) => {
               const canCancel = ['draft', 'submitted', 'returned'].includes(record.status)
+              const canChange = ['submitted', 'approved', 'changed'].includes(record.status)
 
-              if (!canCancel) {
+              if (!canCancel && !canChange) {
                 return <Typography.Text type="secondary">--</Typography.Text>
               }
 
               return (
-                <Popconfirm
-                  title="确认取消该计划？"
-                  description={
-                    <Form layout="vertical">
-                      <Form.Item label="取消原因" required style={{ marginBottom: 0 }}>
-                        <Input.TextArea
-                          value={cancelReason}
-                          rows={2}
-                          onChange={(event) => setCancelReason(event.target.value)}
-                        />
-                      </Form.Item>
-                    </Form>
-                  }
-                  onConfirm={() => {
-                    cancelPlan(record.id, cancelReason || '终端用户申请取消')
-                    setCancelReason('')
-                    message.success('计划已取消并释放占用金额')
-                  }}
-                >
-                  <Button danger size="small">
-                    取消计划
-                  </Button>
-                </Popconfirm>
+                <Space>
+                  {canCancel ? (
+                    <Popconfirm
+                      title="确认取消该计划？"
+                      description={
+                        <Form layout="vertical">
+                          <Form.Item label="取消原因" required style={{ marginBottom: 0 }}>
+                            <Input.TextArea
+                              value={cancelReason}
+                              rows={2}
+                              onChange={(event) => setCancelReason(event.target.value)}
+                            />
+                          </Form.Item>
+                        </Form>
+                      }
+                      onConfirm={() => {
+                        cancelPlan(record.id, cancelReason || '终端用户申请取消')
+                        setCancelReason('')
+                        message.success('计划已取消并释放占用金额')
+                      }}
+                    >
+                      <Button danger size="small">
+                        取消计划
+                      </Button>
+                    </Popconfirm>
+                  ) : null}
+                  {canChange ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      ghost
+                      onClick={() => {
+                        setChangeTarget(record)
+                        setChangeReason('')
+                        setChangeAmount(0)
+                      }}
+                    >
+                      变更申请
+                    </Button>
+                  ) : null}
+                </Space>
               )
             },
           },
@@ -151,6 +200,14 @@ function PlanListPage() {
               {activePlan.siteName}
             </Typography.Text>
             <Typography.Text>
+              <strong>计划日期：</strong>
+              {activePlan.planDate ?? '--'}
+            </Typography.Text>
+            <Typography.Text>
+              <strong>时间窗：</strong>
+              {activePlan.timeWindow ?? '--'}
+            </Typography.Text>
+            <Typography.Text>
               <strong>运输方式：</strong>
               {activePlan.transportMode}
             </Typography.Text>
@@ -176,6 +233,39 @@ function PlanListPage() {
           </Space>
         ) : null}
       </Drawer>
+
+      <Modal
+        title="计划变更申请"
+        open={Boolean(changeTarget)}
+        onCancel={() => setChangeTarget(undefined)}
+        onOk={submitChangeRequest}
+        okText="提交申请"
+      >
+        {changeTarget ? (
+          <Form layout="vertical">
+            <Form.Item label="目标计划">
+              <Input value={changeTarget.number} disabled />
+            </Form.Item>
+            <Form.Item label="变更原因" required>
+              <Input.TextArea
+                rows={4}
+                value={changeReason}
+                placeholder="例如：客户现场用气需求上调，申请调整计划量与承运安排。"
+                onChange={(event) => setChangeReason(event.target.value)}
+              />
+            </Form.Item>
+            <Form.Item label="涉及金额（元，可选）">
+              <InputNumber
+                min={0}
+                precision={2}
+                style={{ width: '100%' }}
+                value={changeAmount}
+                onChange={(value) => setChangeAmount(Number(value ?? 0))}
+              />
+            </Form.Item>
+          </Form>
+        ) : null}
+      </Modal>
     </div>
   )
 }

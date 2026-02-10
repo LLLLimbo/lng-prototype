@@ -4,6 +4,7 @@ import {
   Card,
   Checkbox,
   Col,
+  DatePicker,
   Form,
   InputNumber,
   Radio,
@@ -14,6 +15,7 @@ import {
   Typography,
   message,
 } from 'antd'
+import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import FundWaterLevel from '../components/FundWaterLevel'
@@ -23,6 +25,8 @@ import { useAppStore } from '../store/useAppStore'
 interface DraftForm {
   priceId?: string
   siteId?: string
+  planDate?: string
+  timeWindow?: string
   plannedVolume: number
   transportMode: 'upstream' | 'self' | 'carrier'
   carrierId?: string
@@ -36,6 +40,8 @@ interface DraftForm {
 }
 
 const initialForm: DraftForm = {
+  planDate: dayjs().format('YYYY-MM-DD'),
+  timeWindow: '08:00-12:00',
   plannedVolume: 20,
   transportMode: 'upstream',
   freightFee: 0,
@@ -47,6 +53,15 @@ const initialForm: DraftForm = {
 const carrierOptions = [
   { label: '苏南承运联盟', value: 'carrier-01' },
   { label: '华东能源物流', value: 'carrier-02' },
+]
+
+const timeWindowOptions = [
+  { label: '00:00-06:00', value: '00:00-06:00' },
+  { label: '06:00-12:00', value: '06:00-12:00' },
+  { label: '08:00-12:00', value: '08:00-12:00' },
+  { label: '12:00-18:00', value: '12:00-18:00' },
+  { label: '13:00-18:00', value: '13:00-18:00' },
+  { label: '18:00-24:00', value: '18:00-24:00' },
 ]
 
 function PlanCreatePage() {
@@ -99,6 +114,14 @@ function PlanCreatePage() {
 
       if (!formValue.siteId) {
         validationErrors.push('请选择用气站点')
+      }
+
+      if (!formValue.planDate) {
+        validationErrors.push('请选择计划日期')
+      }
+
+      if (!formValue.timeWindow) {
+        validationErrors.push('请选择时间窗')
       }
 
       if (formValue.plannedVolume <= 0) {
@@ -157,6 +180,8 @@ function PlanCreatePage() {
     const result = createPlan({
       siteId: formValue.siteId ?? '',
       priceId: formValue.priceId ?? '',
+      planDate: formValue.planDate,
+      timeWindow: formValue.timeWindow,
       plannedVolume: formValue.plannedVolume,
       freightFee: formValue.freightFee,
       transportMode: formValue.transportMode,
@@ -198,6 +223,11 @@ function PlanCreatePage() {
                     <Typography.Title level={4} style={{ margin: 0 }}>
                       ¥{price.price.toLocaleString('zh-CN')}/吨
                     </Typography.Title>
+                    {price.scope === 'exclusive' ? (
+                      <Typography.Text type="success">一户一价（优先覆盖公共价）</Typography.Text>
+                    ) : (
+                      <Typography.Text type="secondary">公共价</Typography.Text>
+                    )}
                     <Typography.Text type="secondary">
                       {price.validFrom} ~ {price.validTo}
                     </Typography.Text>
@@ -224,6 +254,31 @@ function PlanCreatePage() {
                 onChange={(value) => setFormValue((prev) => ({ ...prev, siteId: value }))}
               />
             </Form.Item>
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item label="计划日期">
+                  <DatePicker
+                    style={{ width: '100%' }}
+                    value={formValue.planDate ? dayjs(formValue.planDate) : null}
+                    onChange={(value) =>
+                      setFormValue((prev) => ({
+                        ...prev,
+                        planDate: value ? value.format('YYYY-MM-DD') : undefined,
+                      }))
+                    }
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="时间窗">
+                  <Select
+                    value={formValue.timeWindow}
+                    options={timeWindowOptions}
+                    onChange={(value) => setFormValue((prev) => ({ ...prev, timeWindow: value }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
             <Form.Item label="计划量（吨）">
               <InputNumber
                 style={{ width: '100%' }}
@@ -438,6 +493,8 @@ function PlanCreatePage() {
         <Space direction="vertical" size={8}>
           <Typography.Text>气价：{selectedPrice?.sourceCompany ?? '-'}</Typography.Text>
           <Typography.Text>站点：{selectedSite?.name ?? '-'}</Typography.Text>
+          <Typography.Text>计划日期：{formValue.planDate ?? '-'}</Typography.Text>
+          <Typography.Text>时间窗：{formValue.timeWindow ?? '-'}</Typography.Text>
           <Typography.Text>计划量：{formValue.plannedVolume.toFixed(3)} 吨</Typography.Text>
           <Typography.Text>运输方式：{formValue.transportMode}</Typography.Text>
           <Typography.Text>预计总金额：</Typography.Text>
