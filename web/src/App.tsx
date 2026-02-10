@@ -12,6 +12,7 @@ import InvoicePage from './pages/InvoicePage'
 import MobileTaskPage from './pages/MobileTaskPage'
 import NotFoundPage from './pages/NotFoundPage'
 import OnboardingPage from './pages/OnboardingPage'
+import OnboardingSubmitPage from './pages/OnboardingSubmitPage'
 import OnboardingStatusPage from './pages/OnboardingStatusPage'
 import PlanApprovalPage from './pages/PlanApprovalPage'
 import PlanCreatePage from './pages/PlanCreatePage'
@@ -20,6 +21,7 @@ import ReconciliationPage from './pages/ReconciliationPage'
 import ReportsPage from './pages/ReportsPage'
 import SettlementPage from './pages/SettlementPage'
 import ArchivePage from './pages/ArchivePage'
+import AcceptancePage from './pages/AcceptancePage'
 import AttachmentCenterPage from './pages/AttachmentCenterPage'
 import BasicInfoPage from './pages/BasicInfoPage'
 import DailyPlanReportPage from './pages/DailyPlanReportPage'
@@ -185,6 +187,14 @@ function App() {
             }
           />
           <Route
+            path="onboarding/submit"
+            element={
+              <PermissionGuard>
+                <OnboardingSubmitPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
             path="basic-info"
             element={
               <PermissionGuard>
@@ -213,6 +223,14 @@ function App() {
             element={
               <PermissionGuard>
                 <FulfillmentPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="orders/acceptance"
+            element={
+              <PermissionGuard>
+                <AcceptancePage />
               </PermissionGuard>
             }
           />

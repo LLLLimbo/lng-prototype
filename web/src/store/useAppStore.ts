@@ -33,6 +33,8 @@ export type OrderStatus =
 export type TransportMode = 'upstream' | 'self' | 'carrier'
 export type PaymentMethod = 'prepaid' | 'postpaid'
 export type WeighDiffRule = 'load' | 'unload' | 'delta'
+export type GasPriceScope = 'public' | 'exclusive'
+export type GasPriceStatus = 'draft' | 'published' | 'off-shelf'
 
 export interface AuthUser {
   id: string
@@ -73,13 +75,18 @@ export interface GasPrice {
   id: string
   sourceCompany: string
   sourceSite: string
-  scope: 'public' | 'exclusive'
+  scope: GasPriceScope
   customerId?: string
   price: number
   validFrom: string
   validTo: string
   taxIncluded: boolean
   note: string
+  status: GasPriceStatus
+  publishedAt?: string
+  publishedBy?: string
+  offShelfAt?: string
+  offShelfBy?: string
 }
 
 export interface Plan {
@@ -238,6 +245,11 @@ export interface OnboardingApplication {
   organizationType: 'upstream' | 'terminal' | 'carrier'
   contactName: string
   contactPhone: string
+  invoiceTitle?: string
+  taxNo?: string
+  businessLicenseFile?: string
+  qualificationFile?: string
+  materialSubmittedAt?: string
   submittedAt: string
   status: 'pending' | 'approved' | 'rejected' | 'activated'
   level?: 'A' | 'B' | 'C'
@@ -314,6 +326,29 @@ export interface CreatePlanResult {
   success: boolean
   errors: string[]
   planId?: string
+}
+
+export interface SaveGasPriceDraftInput {
+  sourceCompany: string
+  sourceSite: string
+  scope: GasPriceScope
+  customerId?: string
+  price: number
+  validFrom: string
+  validTo: string
+  taxIncluded: boolean
+  note: string
+}
+
+export interface SaveGasPriceDraftResult {
+  success: boolean
+  errors: string[]
+  priceId?: string
+}
+
+export interface GasPriceActionResult {
+  success: boolean
+  error?: string
 }
 
 export interface ReviewPlanInput {
@@ -433,6 +468,21 @@ export interface UploadOnboardingContractInput {
   effectiveDate: string
 }
 
+export interface SubmitOnboardingMaterialsInput {
+  applicationId: string
+  contactName?: string
+  contactPhone: string
+  invoiceTitle: string
+  taxNo: string
+  businessLicenseFile: string
+  qualificationFile: string
+}
+
+export interface SubmitOnboardingMaterialsResult {
+  success: boolean
+  error?: string
+}
+
 export interface UploadUpstreamArchiveInput {
   upstreamCompany: string
   period: string
@@ -542,7 +592,14 @@ export interface AppState extends AppSeed {
   resetPassword: (input: ResetPasswordInput) => ResetPasswordResult
   logout: () => void
   resubmitOnboarding: (applicationId: string) => void
+  submitOnboardingMaterials: (
+    input: SubmitOnboardingMaterialsInput,
+  ) => SubmitOnboardingMaterialsResult
   switchRole: (role: RoleKey) => void
+  getVisibleGasPrices: () => GasPrice[]
+  saveGasPriceDraft: (input: SaveGasPriceDraftInput) => SaveGasPriceDraftResult
+  publishGasPrice: (priceId: string, operator: string) => GasPriceActionResult
+  takeDownGasPrice: (priceId: string, operator: string) => GasPriceActionResult
   addSite: (input: AddSiteInput) => string
   updateSite: (input: UpdateSiteInput) => void
   disableSite: (siteId: string) => void
@@ -629,6 +686,31 @@ const createLedger = (
 
 const ensureFixed = (value: number) => Number(value.toFixed(2))
 const MOCK_VERIFY_CODE = '123456'
+
+const isPublishedGasPrice = (price: GasPrice) => price.status === 'published'
+
+const isVisibleForTerminal = (price: GasPrice, customerId: string) =>
+  isPublishedGasPrice(price) &&
+  (price.scope === 'public' || price.customerId === customerId)
+
+const listVisibleGasPrices = (
+  prices: GasPrice[],
+  role: RoleKey,
+  customerId: string,
+): GasPrice[] => {
+  if (role === 'market') {
+    return prices
+  }
+
+  if (role === 'terminal') {
+    return prices.filter((item) => isVisibleForTerminal(item, customerId))
+  }
+
+  return prices.filter(isPublishedGasPrice)
+}
+
+const hasDateOverlap = (leftFrom: string, leftTo: string, rightFrom: string, rightTo: string) =>
+  !(leftTo < rightFrom || rightTo < leftFrom)
 
 export const defaultMockData = (): AppSeed => ({
   isAuthenticated: false,
@@ -765,6 +847,9 @@ export const defaultMockData = (): AppSeed => ({
       validTo: '2026-02-15',
       taxIncluded: true,
       note: '公共挂牌价',
+      status: 'published',
+      publishedAt: '2026-02-01T08:00:00.000Z',
+      publishedBy: '市场部-周婷',
     },
     {
       id: 'price-exclusive-a',
@@ -777,6 +862,9 @@ export const defaultMockData = (): AppSeed => ({
       validTo: '2026-02-15',
       taxIncluded: true,
       note: '一户一价，覆盖公共价',
+      status: 'published',
+      publishedAt: '2026-02-01T08:10:00.000Z',
+      publishedBy: '市场部-周婷',
     },
     {
       id: 'price-public-2',
@@ -788,6 +876,9 @@ export const defaultMockData = (): AppSeed => ({
       validTo: '2026-02-20',
       taxIncluded: false,
       note: '公共价，税外',
+      status: 'published',
+      publishedAt: '2026-02-01T08:20:00.000Z',
+      publishedBy: '市场部-周婷',
     },
   ],
   plans: [
@@ -1246,8 +1337,300 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         ],
       })
     },
+    submitOnboardingMaterials: (
+      input: SubmitOnboardingMaterialsInput,
+    ): SubmitOnboardingMaterialsResult => {
+      const state = get()
+      const target = state.onboardingApplications.find(
+        (item) => item.id === input.applicationId,
+      )
+
+      if (!target) {
+        return {
+          success: false,
+          error: '入驻申请不存在',
+        }
+      }
+
+      if (target.status === 'approved' || target.status === 'activated') {
+        return {
+          success: false,
+          error: '当前状态不可提交资料',
+        }
+      }
+
+      if (!input.contactPhone.trim()) {
+        return {
+          success: false,
+          error: '联系电话不能为空',
+        }
+      }
+
+      if (!input.invoiceTitle.trim()) {
+        return {
+          success: false,
+          error: '开票抬头不能为空',
+        }
+      }
+
+      if (!input.taxNo.trim()) {
+        return {
+          success: false,
+          error: '税号不能为空',
+        }
+      }
+
+      if (!input.businessLicenseFile.trim()) {
+        return {
+          success: false,
+          error: '请上传营业执照',
+        }
+      }
+
+      if (!input.qualificationFile.trim()) {
+        return {
+          success: false,
+          error: '请上传资质附件',
+        }
+      }
+
+      const submitTime = now()
+      const nextApplications = state.onboardingApplications.map((item) =>
+        item.id === input.applicationId
+          ? {
+              ...item,
+              contactName: input.contactName?.trim() || item.contactName,
+              contactPhone: input.contactPhone.trim(),
+              invoiceTitle: input.invoiceTitle.trim(),
+              taxNo: input.taxNo.trim(),
+              businessLicenseFile: input.businessLicenseFile.trim(),
+              qualificationFile: input.qualificationFile.trim(),
+              materialSubmittedAt: submitTime,
+              submittedAt: submitTime,
+              status: 'pending' as const,
+              rejectReason: undefined,
+              reviewer: undefined,
+            }
+          : item,
+      )
+
+      set({
+        onboardingApplications: nextApplications,
+        notifications: [
+          createNotification(
+            'approval',
+            '入驻资料已提交',
+            `${target.organizationName} 已提交组织资料，待市场部审核。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+      }
+    },
     switchRole: (role: RoleKey) => {
       set({ currentRole: role })
+    },
+    getVisibleGasPrices: () => {
+      const state = get()
+      return listVisibleGasPrices(
+        state.gasPrices,
+        state.currentRole,
+        state.activeCustomerId,
+      )
+    },
+    saveGasPriceDraft: (input: SaveGasPriceDraftInput): SaveGasPriceDraftResult => {
+      const state = get()
+      const errors: string[] = []
+      const sourceCompany = input.sourceCompany.trim()
+      const sourceSite = input.sourceSite.trim()
+      const note = input.note.trim()
+      const customerId = input.customerId?.trim()
+      const validFrom = input.validFrom.trim()
+      const validTo = input.validTo.trim()
+
+      if (!sourceCompany) {
+        errors.push('请输入上游气源公司')
+      }
+
+      if (!sourceSite) {
+        errors.push('请输入气源点')
+      }
+
+      if (input.price <= 0) {
+        errors.push('请输入大于 0 的单价')
+      }
+
+      if (!validFrom || !validTo) {
+        errors.push('请选择有效期起止')
+      }
+
+      if (validFrom && validTo && validFrom > validTo) {
+        errors.push('有效期结束日期不得早于开始日期')
+      }
+
+      if (input.scope === 'exclusive' && !customerId) {
+        errors.push('指定客户价必须选择客户')
+      }
+
+      if (errors.length > 0) {
+        return {
+          success: false,
+          errors,
+        }
+      }
+
+      const draft: GasPrice = {
+        id: nextId('price'),
+        sourceCompany,
+        sourceSite,
+        scope: input.scope,
+        customerId: input.scope === 'exclusive' ? customerId : undefined,
+        price: ensureFixed(input.price),
+        validFrom,
+        validTo,
+        taxIncluded: input.taxIncluded,
+        note,
+        status: 'draft',
+      }
+
+      set({
+        gasPrices: [draft, ...state.gasPrices],
+      })
+
+      return {
+        success: true,
+        errors: [],
+        priceId: draft.id,
+      }
+    },
+    publishGasPrice: (priceId: string, operator: string): GasPriceActionResult => {
+      const state = get()
+      const target = state.gasPrices.find((item) => item.id === priceId)
+
+      if (!target) {
+        return {
+          success: false,
+          error: '气价不存在',
+        }
+      }
+
+      if (target.scope === 'exclusive' && !target.customerId) {
+        return {
+          success: false,
+          error: '指定客户价缺少客户信息',
+        }
+      }
+
+      const conflictingPublished = state.gasPrices.find((item) => {
+        if (item.id === priceId || item.status !== 'published') {
+          return false
+        }
+
+        if (
+          item.sourceCompany !== target.sourceCompany ||
+          item.sourceSite !== target.sourceSite
+        ) {
+          return false
+        }
+
+        if (item.scope !== target.scope) {
+          return false
+        }
+
+        if (target.scope === 'exclusive' && item.customerId !== target.customerId) {
+          return false
+        }
+
+        return hasDateOverlap(item.validFrom, item.validTo, target.validFrom, target.validTo)
+      })
+
+      if (conflictingPublished) {
+        return {
+          success: false,
+          error: '同一客户同一气源同一有效期内不允许多条已发布价格',
+        }
+      }
+
+      const publishAt = now()
+      const publisher = operator.trim() || '市场部'
+      const nextGasPrices = state.gasPrices.map((item) =>
+        item.id === priceId
+          ? {
+              ...item,
+              status: 'published' as const,
+              publishedAt: publishAt,
+              publishedBy: publisher,
+              offShelfAt: undefined,
+              offShelfBy: undefined,
+            }
+          : item,
+      )
+
+      set({
+        gasPrices: nextGasPrices,
+        notifications: [
+          createNotification(
+            'approval',
+            '气价已发布',
+            `${target.sourceCompany} ${target.sourceSite} 气价已由 ${publisher} 发布。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+      }
+    },
+    takeDownGasPrice: (priceId: string, operator: string): GasPriceActionResult => {
+      const state = get()
+      const target = state.gasPrices.find((item) => item.id === priceId)
+
+      if (!target) {
+        return {
+          success: false,
+          error: '气价不存在',
+        }
+      }
+
+      if (target.status !== 'published') {
+        return {
+          success: false,
+          error: '仅已发布气价可下架',
+        }
+      }
+
+      const offShelfAt = now()
+      const offShelfBy = operator.trim() || '市场部'
+      const nextGasPrices = state.gasPrices.map((item) =>
+        item.id === priceId
+          ? {
+              ...item,
+              status: 'off-shelf' as const,
+              offShelfAt,
+              offShelfBy,
+            }
+          : item,
+      )
+
+      set({
+        gasPrices: nextGasPrices,
+        notifications: [
+          createNotification(
+            'approval',
+            '气价已下架',
+            `${target.sourceCompany} ${target.sourceSite} 气价已由 ${offShelfBy} 下架。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+      }
     },
     addSite: (input: AddSiteInput): string => {
       const state = get()
@@ -1543,6 +1926,18 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
 
       if (!gasPrice) {
         errors.push('请选择有效气价')
+      }
+
+      const terminalCanUsePrice =
+        gasPrice &&
+        (gasPrice.scope === 'public' || gasPrice.customerId === state.activeCustomerId)
+
+      if (gasPrice?.status !== 'published') {
+        errors.push('仅可申报已发布且可见气价')
+      }
+
+      if (state.currentRole === 'terminal' && gasPrice && !terminalCanUsePrice) {
+        errors.push('仅可申报已发布且可见气价')
       }
 
       if (input.plannedVolume <= 0) {

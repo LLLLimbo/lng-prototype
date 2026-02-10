@@ -1,5 +1,6 @@
-import { Alert, Button, Card, Empty, Space, Table, Typography, message } from 'antd'
+import { Alert, Button, Card, Empty, Space, Table, Typography } from 'antd'
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import StatusBadge from '../components/StatusBadge'
 import { useAppStore, type OnboardingApplication } from '../store/useAppStore'
 
@@ -21,9 +22,9 @@ const statusTypeMap: Record<
 }
 
 function OnboardingStatusPage() {
+  const navigate = useNavigate()
   const currentUser = useAppStore((state) => state.currentUser)
   const onboardingApplications = useAppStore((state) => state.onboardingApplications)
-  const resubmitOnboarding = useAppStore((state) => state.resubmitOnboarding)
 
   const myApplications = useMemo(() => {
     if (!currentUser) {
@@ -58,7 +59,7 @@ function OnboardingStatusPage() {
         showIcon
         style={{ marginBottom: 16 }}
         message="审核结果通知"
-        description="展示入驻审核状态、驳回原因和合同激活结果。被驳回时可一键重新提交。"
+        description="展示入驻审核状态、驳回原因和合同激活结果。被驳回时可进入资料提交页补充后重新提交。"
       />
 
       {myApplications.length === 0 ? (
@@ -105,12 +106,9 @@ function OnboardingStatusPage() {
                   <Button
                     size="small"
                     type="primary"
-                    onClick={() => {
-                      resubmitOnboarding(record.id)
-                      message.success('入驻申请已重新提交')
-                    }}
+                    onClick={() => navigate('/app/onboarding/submit')}
                   >
-                    重新提交
+                    补充资料
                   </Button>
                 ) : (
                   <Typography.Text type="secondary">--</Typography.Text>

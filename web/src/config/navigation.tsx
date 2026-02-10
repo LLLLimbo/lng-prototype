@@ -89,6 +89,13 @@ export const appMenus: AppMenuItem[] = [
     roles: ['terminal', 'carrier', 'driver'],
   },
   {
+    key: 'onboarding-submit',
+    label: '资料提交',
+    path: '/app/onboarding/submit',
+    icon: <AuditOutlined />,
+    roles: ['terminal', 'carrier', 'driver'],
+  },
+  {
     key: 'basic-info',
     label: '基础信息',
     path: '/app/basic-info',
@@ -115,6 +122,13 @@ export const appMenus: AppMenuItem[] = [
     path: '/app/orders/fulfillment',
     icon: <TruckOutlined />,
     roles: ['dispatch', 'carrier', 'driver'],
+  },
+  {
+    key: 'order-acceptance',
+    label: '验收工作台',
+    path: '/app/orders/acceptance',
+    icon: <CheckCircleOutlined />,
+    roles: ['dispatch', 'market', 'finance'],
   },
   {
     key: 'finance',

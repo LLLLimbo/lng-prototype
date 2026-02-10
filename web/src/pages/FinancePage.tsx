@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Empty,
   Form,
   Input,
   InputNumber,
@@ -19,14 +20,78 @@ import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
 import FundWaterLevel from '../components/FundWaterLevel'
 import MoneyDisplay from '../components/MoneyDisplay'
-import { useAppStore } from '../store/useAppStore'
-import { formatDateTime, formatMoney } from '../utils/format'
+import StatusBadge from '../components/StatusBadge'
+import { useAppStore, type ExceptionCase, type ExceptionType, type Order } from '../store/useAppStore'
+import { formatDateTime, formatMoney, orderStatusLabel } from '../utils/format'
+
+const exceptionTypeLabelMap: Record<ExceptionType, string> = {
+  'plan-terminate': '计划终止',
+  'order-terminate': '订单终止',
+  'plan-change': '计划变更',
+  'order-change': '订单变更',
+  'delta-adjustment': '多退少补',
+}
+
+const exceptionStatusLabelMap: Record<ExceptionCase['status'], string> = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已驳回',
+}
+
+const exceptionStatusBadgeMap: Record<ExceptionCase['status'], 'pending' | 'success' | 'danger'> = {
+  pending: 'pending',
+  approved: 'success',
+  rejected: 'danger',
+}
+
+const orderStatusBadgeMap: Record<
+  Order['status'],
+  'pending' | 'processing' | 'warning' | 'success' | 'neutral'
+> = {
+  'pending-supplement': 'pending',
+  ordered: 'pending',
+  stocking: 'processing',
+  loaded: 'processing',
+  transporting: 'processing',
+  arrived: 'processing',
+  'pending-acceptance': 'warning',
+  accepted: 'success',
+  settling: 'warning',
+  settled: 'success',
+  archived: 'neutral',
+}
+
+interface ReceivableOrderRow {
+  id: string
+  number: string
+  planNumber: string
+  customerName: string
+  siteName: string
+  paymentMethodLabel: '预付' | '后付'
+  orderStatus: Order['status']
+  receivableAmount: number
+  relatedExceptionCount: number
+  pendingExceptionCount: number
+  followUpStatus: '待收款' | '异常待处理' | '待核销'
+}
+
+const receivableStatusBadgeMap: Record<
+  ReceivableOrderRow['followUpStatus'],
+  'pending' | 'danger' | 'processing'
+> = {
+  待收款: 'pending',
+  异常待处理: 'danger',
+  待核销: 'processing',
+}
 
 function FinancePage() {
   const role = useAppStore((state) => state.currentRole)
   const account = useAppStore((state) => state.account)
+  const plans = useAppStore((state) => state.plans)
+  const orders = useAppStore((state) => state.orders)
   const ledgers = useAppStore((state) => state.ledgers)
   const deposits = useAppStore((state) => state.deposits)
+  const exceptions = useAppStore((state) => state.exceptions)
   const activeCustomerName = useAppStore((state) => state.activeCustomerName)
   const registerDeposit = useAppStore((state) => state.registerDeposit)
   const reviewDeposit = useAppStore((state) => state.reviewDeposit)
@@ -40,6 +105,93 @@ function FinancePage() {
   const pendingDeposits = useMemo(
     () => deposits.filter((item) => item.status === 'pending'),
     [deposits],
+  )
+
+  const pendingDepositAmount = useMemo(
+    () => pendingDeposits.reduce((sum, item) => sum + item.amount, 0),
+    [pendingDeposits],
+  )
+
+  const planMap = useMemo(() => new Map(plans.map((item) => [item.id, item])), [plans])
+
+  const exceptionMap = useMemo(() => {
+    const map = new Map<string, ExceptionCase[]>()
+    exceptions.forEach((item) => {
+      const existing = map.get(item.targetNo)
+      if (existing) {
+        existing.push(item)
+      } else {
+        map.set(item.targetNo, [item])
+      }
+    })
+    return map
+  }, [exceptions])
+
+  const receivableOrders = useMemo<ReceivableOrderRow[]>(
+    () =>
+      orders
+        .map((order) => {
+          const relatedPlan = planMap.get(order.planId)
+          const paymentMethodLabel: ReceivableOrderRow['paymentMethodLabel'] =
+            relatedPlan?.paymentMethod === 'postpaid' ? '后付' : '预付'
+
+          const baseAmount = relatedPlan?.totalAmount ?? 0
+          const settlementRatio =
+            typeof order.settlementWeight === 'number' &&
+            typeof relatedPlan?.plannedVolume === 'number' &&
+            relatedPlan.plannedVolume > 0
+              ? order.settlementWeight / relatedPlan.plannedVolume
+              : 1
+
+          const relatedExceptions = exceptionMap.get(order.number) ?? []
+          const pendingExceptionCount = relatedExceptions.filter(
+            (item) => item.status === 'pending',
+          ).length
+
+          const followUpStatus: ReceivableOrderRow['followUpStatus'] =
+            pendingExceptionCount > 0
+              ? '异常待处理'
+              : ['accepted', 'settled', 'archived'].includes(order.status)
+                ? '待核销'
+                : '待收款'
+
+          return {
+            id: order.id,
+            number: order.number,
+            planNumber: relatedPlan?.number ?? '--',
+            customerName: order.customerName,
+            siteName: order.siteName,
+            paymentMethodLabel,
+            orderStatus: order.status,
+            receivableAmount: Number((baseAmount * settlementRatio).toFixed(2)),
+            relatedExceptionCount: relatedExceptions.length,
+            pendingExceptionCount,
+            followUpStatus,
+          }
+        })
+        .filter((item) => item.paymentMethodLabel === '后付' || item.relatedExceptionCount > 0),
+    [orders, planMap, exceptionMap],
+  )
+
+  const receivableAmount = useMemo(
+    () => receivableOrders.reduce((sum, item) => sum + item.receivableAmount, 0),
+    [receivableOrders],
+  )
+
+  const sortedExceptions = useMemo(
+    () =>
+      [...exceptions].sort((a, b) => {
+        if (a.status === b.status) {
+          return dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf()
+        }
+        return a.status === 'pending' ? -1 : b.status === 'pending' ? 1 : 0
+      }),
+    [exceptions],
+  )
+
+  const pendingExceptionCount = useMemo(
+    () => exceptions.filter((item) => item.status === 'pending').length,
+    [exceptions],
   )
 
   const metricCards = [
@@ -95,76 +247,92 @@ function FinancePage() {
         items={[
           {
             key: 'deposits',
-            label: role === 'finance' ? '预存待确认' : '预存登记',
+            label:
+              role === 'finance' ? `预存待确认 (${pendingDeposits.length})` : '预存登记',
             children:
               role === 'finance' ? (
-                <Table
-                  rowKey="id"
-                  dataSource={pendingDeposits}
-                  pagination={false}
-                  locale={{ emptyText: '暂无待确认预存' }}
-                  columns={[
-                    { title: '客户', dataIndex: 'customerName' },
-                    {
-                      title: '金额',
-                      dataIndex: 'amount',
-                      align: 'right',
-                      render: (value: number) => formatMoney(value),
-                    },
-                    { title: '打款日期', dataIndex: 'paidAt' },
-                    { title: '回单附件', dataIndex: 'receiptName' },
-                    {
-                      title: '驳回原因',
-                      key: 'reason',
-                      render: (_, record) => (
-                        <Input
-                          size="small"
-                          placeholder="驳回时填写"
-                          value={rejectReasonMap[record.id]}
-                          onChange={(event) =>
-                            setRejectReasonMap((prev) => ({
-                              ...prev,
-                              [record.id]: event.target.value,
-                            }))
-                          }
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="预存待确认"
+                    description={`当前待确认 ${pendingDeposits.length} 笔，金额合计 ${formatMoney(pendingDepositAmount)}。`}
+                  />
+                  <Table
+                    rowKey="id"
+                    dataSource={pendingDeposits}
+                    pagination={false}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无待确认预存"
                         />
                       ),
-                    },
-                    {
-                      title: '操作',
-                      key: 'action',
-                      render: (_, record) => (
-                        <Space>
-                          <Button
-                            type="primary"
+                    }}
+                    columns={[
+                      { title: '客户', dataIndex: 'customerName' },
+                      {
+                        title: '金额',
+                        dataIndex: 'amount',
+                        align: 'right',
+                        render: (value: number) => formatMoney(value),
+                      },
+                      { title: '打款日期', dataIndex: 'paidAt' },
+                      { title: '回单附件', dataIndex: 'receiptName' },
+                      {
+                        title: '驳回原因',
+                        key: 'reason',
+                        render: (_, record) => (
+                          <Input
                             size="small"
-                            onClick={() => {
-                              reviewDeposit(record.id, 'confirm', '财务-陈会计')
-                              message.success('已确认到账，可用余额已更新')
-                            }}
-                          >
-                            确认到账
-                          </Button>
-                          <Button
-                            danger
-                            size="small"
-                            onClick={() => {
-                              reviewDeposit(
-                                record.id,
-                                'reject',
-                                '财务-陈会计',
-                                rejectReasonMap[record.id] || '回单信息不完整',
-                              )
-                              message.warning('已驳回预存登记')
-                            }}
-                          >
-                            驳回
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
+                            placeholder="驳回时填写"
+                            value={rejectReasonMap[record.id]}
+                            onChange={(event) =>
+                              setRejectReasonMap((prev) => ({
+                                ...prev,
+                                [record.id]: event.target.value,
+                              }))
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        title: '操作',
+                        key: 'action',
+                        render: (_, record) => (
+                          <Space>
+                            <Button
+                              type="primary"
+                              size="small"
+                              onClick={() => {
+                                reviewDeposit(record.id, 'confirm', '财务-陈会计')
+                                message.success('已确认到账，可用余额已更新')
+                              }}
+                            >
+                              确认到账
+                            </Button>
+                            <Button
+                              danger
+                              size="small"
+                              onClick={() => {
+                                reviewDeposit(
+                                  record.id,
+                                  'reject',
+                                  '财务-陈会计',
+                                  rejectReasonMap[record.id] || '回单信息不完整',
+                                )
+                                message.warning('已驳回预存登记')
+                              }}
+                            >
+                              驳回
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </Space>
               ) : (
                 <Card>
                   <Space direction="vertical" size={12}>
@@ -180,6 +348,147 @@ function FinancePage() {
                   </Space>
                 </Card>
               ),
+          },
+          {
+            key: 'receivables',
+            label: `订单待收款 (${receivableOrders.length})`,
+            children: (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Alert
+                  type={role === 'finance' ? 'info' : 'warning'}
+                  showIcon
+                  message="订单待收款列表"
+                  description={
+                    role === 'finance'
+                      ? `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}。`
+                      : `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}（仅财务可执行到款确认）。`
+                  }
+                />
+                <Table
+                  rowKey="id"
+                  dataSource={receivableOrders}
+                  pagination={{ pageSize: 6 }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="暂无待跟进收款订单"
+                      />
+                    ),
+                  }}
+                  columns={[
+                    { title: '订单号', dataIndex: 'number' },
+                    { title: '关联计划', dataIndex: 'planNumber' },
+                    { title: '客户', dataIndex: 'customerName' },
+                    { title: '卸气点', dataIndex: 'siteName' },
+                    { title: '付款方式', dataIndex: 'paymentMethodLabel' },
+                    {
+                      title: '订单状态',
+                      dataIndex: 'orderStatus',
+                      render: (value: Order['status']) => (
+                        <StatusBadge text={orderStatusLabel[value]} type={orderStatusBadgeMap[value]} />
+                      ),
+                    },
+                    {
+                      title: '应收金额',
+                      dataIndex: 'receivableAmount',
+                      align: 'right',
+                      render: (value: number) => formatMoney(value),
+                    },
+                    {
+                      title: '关联异常',
+                      key: 'exception',
+                      render: (_, record: ReceivableOrderRow) => {
+                        if (record.relatedExceptionCount === 0) {
+                          return <Typography.Text type="secondary">无</Typography.Text>
+                        }
+                        if (record.pendingExceptionCount > 0) {
+                          return (
+                            <StatusBadge
+                              text={`${record.pendingExceptionCount} 条待处理`}
+                              type="warning"
+                            />
+                          )
+                        }
+                        return (
+                          <StatusBadge
+                            text={`${record.relatedExceptionCount} 条已处理`}
+                            type="neutral"
+                          />
+                        )
+                      },
+                    },
+                    {
+                      title: '收款跟进',
+                      dataIndex: 'followUpStatus',
+                      render: (value: ReceivableOrderRow['followUpStatus']) => (
+                        <StatusBadge text={value} type={receivableStatusBadgeMap[value]} />
+                      ),
+                    },
+                  ]}
+                />
+              </Space>
+            ),
+          },
+          {
+            key: 'exceptions',
+            label: `异常列表 (${sortedExceptions.length})`,
+            children: (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="收款异常跟踪"
+                  description={`当前异常 ${sortedExceptions.length} 条，其中待处理 ${pendingExceptionCount} 条。`}
+                />
+                <Table
+                  rowKey="id"
+                  dataSource={sortedExceptions}
+                  pagination={{ pageSize: 6 }}
+                  locale={{
+                    emptyText: (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无异常记录" />
+                    ),
+                  }}
+                  columns={[
+                    { title: '异常单号', dataIndex: 'number' },
+                    {
+                      title: '异常类型',
+                      dataIndex: 'type',
+                      render: (value: ExceptionType) => exceptionTypeLabelMap[value],
+                    },
+                    { title: '目标单据', dataIndex: 'targetNo' },
+                    { title: '责任方', dataIndex: 'responsibilityParty' },
+                    {
+                      title: '涉及金额',
+                      dataIndex: 'amount',
+                      align: 'right',
+                      render: (value: number) => formatMoney(value),
+                    },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      render: (value: ExceptionCase['status']) => (
+                        <StatusBadge
+                          text={exceptionStatusLabelMap[value]}
+                          type={exceptionStatusBadgeMap[value]}
+                        />
+                      ),
+                    },
+                    {
+                      title: '创建时间',
+                      dataIndex: 'createdAt',
+                      render: (value: string) => formatDateTime(value),
+                    },
+                    {
+                      title: '异常原因',
+                      dataIndex: 'reason',
+                      ellipsis: true,
+                    },
+                  ]}
+                />
+              </Space>
+            ),
           },
           {
             key: 'ledger',

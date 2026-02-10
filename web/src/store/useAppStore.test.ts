@@ -2,6 +2,109 @@ import { describe, expect, it } from 'vitest'
 import { createAppStore, defaultMockData } from './useAppStore'
 
 describe('app store domain flow', () => {
+  it('shows newly published gas price to terminal users', () => {
+    const store = createAppStore(defaultMockData())
+    store.getState().switchRole('market')
+
+    const draftResult = store.getState().saveGasPriceDraft({
+      sourceCompany: '华南气源公司',
+      sourceSite: '深圳接收站',
+      scope: 'exclusive',
+      customerId: 'customer-a',
+      price: 4020,
+      validFrom: '2026-02-11',
+      validTo: '2026-02-20',
+      taxIncluded: true,
+      note: '专项优惠价',
+    })
+
+    expect(draftResult.success).toBe(true)
+    const draftId = draftResult.priceId as string
+
+    store.getState().publishGasPrice(draftId, '市场部-周婷')
+    store.getState().switchRole('terminal')
+
+    const visiblePriceIds = store.getState().getVisibleGasPrices().map((item) => item.id)
+    expect(visiblePriceIds).toContain(draftId)
+  })
+
+  it('does not show draft gas price to terminal users', () => {
+    const store = createAppStore(defaultMockData())
+    store.getState().switchRole('market')
+
+    const draftResult = store.getState().saveGasPriceDraft({
+      sourceCompany: '华南气源公司',
+      sourceSite: '深圳接收站',
+      scope: 'exclusive',
+      customerId: 'customer-a',
+      price: 3980,
+      validFrom: '2026-02-11',
+      validTo: '2026-02-20',
+      taxIncluded: false,
+      note: '待发布草稿',
+    })
+
+    expect(draftResult.success).toBe(true)
+    const draftId = draftResult.priceId as string
+
+    store.getState().switchRole('terminal')
+    const visiblePriceIds = store.getState().getVisibleGasPrices().map((item) => item.id)
+    expect(visiblePriceIds).not.toContain(draftId)
+  })
+
+  it('blocks plan declaration when gas price is taken down', () => {
+    const store = createAppStore(defaultMockData())
+    store.getState().switchRole('market')
+
+    const draftResult = store.getState().saveGasPriceDraft({
+      sourceCompany: '华南气源公司',
+      sourceSite: '深圳接收站',
+      scope: 'exclusive',
+      customerId: 'customer-a',
+      price: 3900,
+      validFrom: '2026-02-11',
+      validTo: '2026-02-20',
+      taxIncluded: true,
+      note: '用于下架校验',
+    })
+
+    expect(draftResult.success).toBe(true)
+    const draftId = draftResult.priceId as string
+
+    store.getState().publishGasPrice(draftId, '市场部-周婷')
+    store.getState().switchRole('terminal')
+
+    const planBeforeTakeDown = store.getState().createPlan({
+      siteId: 'site-01',
+      priceId: draftId,
+      plannedVolume: 10,
+      freightFee: 500,
+      transportMode: 'upstream',
+      paymentMethod: 'prepaid',
+      weighDiffRule: 'load',
+      agreementChecked: true,
+    })
+    expect(planBeforeTakeDown.success).toBe(true)
+
+    store.getState().switchRole('market')
+    store.getState().takeDownGasPrice(draftId, '市场部-周婷')
+    store.getState().switchRole('terminal')
+
+    const planAfterTakeDown = store.getState().createPlan({
+      siteId: 'site-01',
+      priceId: draftId,
+      plannedVolume: 10,
+      freightFee: 500,
+      transportMode: 'upstream',
+      paymentMethod: 'prepaid',
+      weighDiffRule: 'load',
+      agreementChecked: true,
+    })
+
+    expect(planAfterTakeDown.success).toBe(false)
+    expect(planAfterTakeDown.errors[0]).toContain('仅可申报已发布且可见气价')
+  })
+
   it('blocks plan submission when available balance is insufficient', () => {
     const store = createAppStore(defaultMockData())
     const result = store.getState().createPlan({
@@ -409,6 +512,27 @@ describe('app store domain flow', () => {
 
     const app = store.getState().onboardingApplications.find((item) => item.id === 'onb-002')
     expect(app?.status).toBe('pending')
+    expect(app?.rejectReason).toBeUndefined()
+  })
+
+  it('submits onboarding materials and reopens application for review', () => {
+    const store = createAppStore(defaultMockData())
+    const result = store.getState().submitOnboardingMaterials({
+      applicationId: 'onb-002',
+      contactPhone: '13900139001',
+      invoiceTitle: '华东承运物流有限公司',
+      taxNo: '91320000MA7654321X',
+      businessLicenseFile: 'business-license.pdf',
+      qualificationFile: 'carrier-qualification.pdf',
+    })
+
+    expect(result.success).toBe(true)
+
+    const app = store.getState().onboardingApplications.find((item) => item.id === 'onb-002')
+    expect(app?.status).toBe('pending')
+    expect(app?.businessLicenseFile).toBe('business-license.pdf')
+    expect(app?.qualificationFile).toBe('carrier-qualification.pdf')
+    expect(app?.taxNo).toBe('91320000MA7654321X')
     expect(app?.rejectReason).toBeUndefined()
   })
 })
