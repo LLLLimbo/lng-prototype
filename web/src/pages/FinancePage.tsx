@@ -69,7 +69,9 @@ interface ReceivableOrderRow {
   siteName: string
   paymentMethodLabel: '预付' | '后付'
   orderStatus: Order['status']
+  paymentStatus: Order['paymentStatus']
   receivableAmount: number
+  receivedAmount: number
   relatedExceptionCount: number
   pendingExceptionCount: number
   followUpStatus: '待收款' | '异常待处理' | '待核销'
@@ -84,6 +86,18 @@ const receivableStatusBadgeMap: Record<
   待核销: 'processing',
 }
 
+const paymentStatusLabelMap: Record<Order['paymentStatus'], string> = {
+  pending: '待收款',
+  partial: '部分到款',
+  paid: '已全额到款',
+}
+
+const paymentStatusBadgeMap: Record<Order['paymentStatus'], 'pending' | 'warning' | 'success'> = {
+  pending: 'pending',
+  partial: 'warning',
+  paid: 'success',
+}
+
 function FinancePage() {
   const role = useAppStore((state) => state.currentRole)
   const account = useAppStore((state) => state.account)
@@ -95,12 +109,17 @@ function FinancePage() {
   const activeCustomerName = useAppStore((state) => state.activeCustomerName)
   const registerDeposit = useAppStore((state) => state.registerDeposit)
   const reviewDeposit = useAppStore((state) => state.reviewDeposit)
+  const confirmOrderReceipt = useAppStore((state) => state.confirmOrderReceipt)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [depositAmount, setDepositAmount] = useState<number>(0)
   const [depositDate, setDepositDate] = useState(dayjs())
   const [receiptName, setReceiptName] = useState('')
   const [rejectReasonMap, setRejectReasonMap] = useState<Record<string, string>>({})
+  const [receiptTarget, setReceiptTarget] = useState<ReceivableOrderRow>()
+  const [receivedAmountInput, setReceivedAmountInput] = useState<number>(0)
+  const [receivedDate, setReceivedDate] = useState(dayjs())
+  const [receivedNote, setReceivedNote] = useState('')
 
   const pendingDeposits = useMemo(
     () => deposits.filter((item) => item.status === 'pending'),
@@ -151,7 +170,7 @@ function FinancePage() {
           const followUpStatus: ReceivableOrderRow['followUpStatus'] =
             pendingExceptionCount > 0
               ? '异常待处理'
-              : ['accepted', 'settled', 'archived'].includes(order.status)
+              : order.paymentStatus === 'paid'
                 ? '待核销'
                 : '待收款'
 
@@ -163,7 +182,9 @@ function FinancePage() {
             siteName: order.siteName,
             paymentMethodLabel,
             orderStatus: order.status,
+            paymentStatus: order.paymentStatus,
             receivableAmount: Number((baseAmount * settlementRatio).toFixed(2)),
+            receivedAmount: order.receivedAmount ?? 0,
             relatedExceptionCount: relatedExceptions.length,
             pendingExceptionCount,
             followUpStatus,
@@ -218,6 +239,30 @@ function FinancePage() {
     setDepositAmount(0)
     setReceiptName('')
     message.success('预存登记已提交，待财务确认')
+  }
+
+  const submitOrderReceipt = () => {
+    if (!receiptTarget) {
+      return
+    }
+
+    const result = confirmOrderReceipt({
+      orderId: receiptTarget.id,
+      amount: receivedAmountInput,
+      receivedAt: receivedDate.format('YYYY-MM-DD'),
+      receiver: '财务-陈会计',
+      note: receivedNote,
+    })
+
+    if (!result.success) {
+      message.error(result.error ?? '到款确认失败')
+      return
+    }
+
+    message.success('订单到款已确认')
+    setReceiptTarget(undefined)
+    setReceivedAmountInput(0)
+    setReceivedNote('')
   }
 
   return (
@@ -364,6 +409,12 @@ function FinancePage() {
                       : `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}（仅财务可执行到款确认）。`
                   }
                 />
+                <Alert
+                  type="info"
+                  showIcon
+                  message="付款信息说明"
+                  description="收款账户：气源发展有限公司 6214 **** **** 9988；到款确认后自动更新支付状态和资金流水。"
+                />
                 <Table
                   rowKey="id"
                   dataSource={receivableOrders}
@@ -396,6 +447,19 @@ function FinancePage() {
                       render: (value: number) => formatMoney(value),
                     },
                     {
+                      title: '已收金额',
+                      dataIndex: 'receivedAmount',
+                      align: 'right',
+                      render: (value: number) => formatMoney(value),
+                    },
+                    {
+                      title: '支付状态',
+                      dataIndex: 'paymentStatus',
+                      render: (value: Order['paymentStatus']) => (
+                        <StatusBadge text={paymentStatusLabelMap[value]} type={paymentStatusBadgeMap[value]} />
+                      ),
+                    },
+                    {
                       title: '关联异常',
                       key: 'exception',
                       render: (_, record: ReceivableOrderRow) => {
@@ -424,6 +488,39 @@ function FinancePage() {
                       render: (value: ReceivableOrderRow['followUpStatus']) => (
                         <StatusBadge text={value} type={receivableStatusBadgeMap[value]} />
                       ),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      render: (_, record: ReceivableOrderRow) => {
+                        if (role !== 'finance') {
+                          return <Typography.Text type="secondary">--</Typography.Text>
+                        }
+
+                        const canConfirm =
+                          record.followUpStatus !== '异常待处理' && record.paymentStatus !== 'paid'
+
+                        return canConfirm ? (
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => {
+                              setReceiptTarget(record)
+                              setReceivedDate(dayjs())
+                              setReceivedNote('')
+                              setReceivedAmountInput(
+                                Number(
+                                  Math.max(0, record.receivableAmount - record.receivedAmount).toFixed(2),
+                                ),
+                              )
+                            }}
+                          >
+                            确认到款
+                          </Button>
+                        ) : (
+                          <Typography.Text type="secondary">--</Typography.Text>
+                        )
+                      },
                     },
                   ]}
                 />
@@ -559,6 +656,47 @@ function FinancePage() {
             description="气源发展有限公司 6214 **** **** 9988（演示）"
           />
         </Form>
+      </Modal>
+
+      <Modal
+        title="订单到款确认"
+        open={Boolean(receiptTarget)}
+        onCancel={() => setReceiptTarget(undefined)}
+        onOk={submitOrderReceipt}
+        okText="确认到账"
+      >
+        {receiptTarget ? (
+          <Form layout="vertical">
+            <Form.Item label="订单号">
+              <Input value={receiptTarget.number} disabled />
+            </Form.Item>
+            <Form.Item label="应收金额">
+              <Input value={formatMoney(receiptTarget.receivableAmount)} disabled />
+            </Form.Item>
+            <Form.Item label="本次到账金额（元）" required>
+              <InputNumber
+                min={0}
+                style={{ width: '100%' }}
+                value={receivedAmountInput}
+                onChange={(value) => setReceivedAmountInput(Number(value ?? 0))}
+              />
+            </Form.Item>
+            <Form.Item label="到账日期" required>
+              <DatePicker
+                style={{ width: '100%' }}
+                value={receivedDate}
+                onChange={(value) => setReceivedDate(value ?? dayjs())}
+              />
+            </Form.Item>
+            <Form.Item label="备注">
+              <Input.TextArea
+                rows={3}
+                value={receivedNote}
+                onChange={(event) => setReceivedNote(event.target.value)}
+              />
+            </Form.Item>
+          </Form>
+        ) : null}
       </Modal>
     </div>
   )

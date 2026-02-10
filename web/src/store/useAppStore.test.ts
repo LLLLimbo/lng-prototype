@@ -192,6 +192,29 @@ describe('app store domain flow', () => {
     ).toBe('archived')
   })
 
+  it('confirms order receipt and updates payment status to paid', () => {
+    const store = createAppStore(defaultMockData())
+
+    store.getState().acceptOrder('order-2001', true, 17.8)
+
+    const result = store.getState().confirmOrderReceipt({
+      orderId: 'order-2001',
+      amount: 72287.78,
+      receivedAt: '2026-02-11',
+      receiver: '财务-陈会计',
+      note: '银行转账到账',
+    })
+
+    expect(result.success).toBe(true)
+
+    const order = store.getState().orders.find((item) => item.id === 'order-2001')
+    expect(order?.paymentStatus).toBe('paid')
+    expect(order?.receivedAmount).toBe(72287.78)
+    expect(order?.status).toBe('settled')
+    expect(store.getState().account.available).toBeGreaterThan(160000)
+    expect(store.getState().ledgers[0].note).toContain('订单到款确认')
+  })
+
   it('creates and approves an exception case', () => {
     const store = createAppStore(defaultMockData())
     const exceptionId = store.getState().createException({

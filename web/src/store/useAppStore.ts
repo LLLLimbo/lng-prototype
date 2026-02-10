@@ -151,6 +151,9 @@ export interface Order {
   settlementWeight?: number
   diffAbnormal: boolean
   exceptionNote?: string
+  paymentStatus: 'pending' | 'partial' | 'paid'
+  receivedAmount?: number
+  lastReceivedAt?: string
 }
 
 export interface Account {
@@ -388,6 +391,19 @@ export interface DepositInput {
   amount: number
   paidAt: string
   receiptName: string
+}
+
+export interface ConfirmOrderReceiptInput {
+  orderId: string
+  amount: number
+  receivedAt: string
+  receiver: string
+  note?: string
+}
+
+export interface ConfirmOrderReceiptResult {
+  success: boolean
+  error?: string
 }
 
 export interface ArchiveActionResult {
@@ -665,6 +681,7 @@ export interface AppState extends AppSeed {
     reviewer: string,
     reason?: string,
   ) => void
+  confirmOrderReceipt: (input: ConfirmOrderReceiptInput) => ConfirmOrderReceiptResult
   applyStamp: (
     statementId: string,
     actorType: 'platform' | 'customer',
@@ -1021,6 +1038,8 @@ export const defaultMockData = (): AppSeed => ({
       unloadWeight: 17.8,
       settlementWeight: 17.8,
       diffAbnormal: false,
+      paymentStatus: 'pending',
+      receivedAmount: 0,
     },
   ],
   ledgers: [
@@ -2244,6 +2263,8 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         threshold: 0.5,
         settlementWeight: approvedPlan.plannedVolume,
         diffAbnormal: false,
+        paymentStatus: 'pending',
+        receivedAmount: 0,
       }
 
       set({
@@ -2392,7 +2413,11 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         return
       }
 
-      const nextStatus: OrderStatus = accepted ? 'accepted' : 'settling'
+      const nextStatus: OrderStatus = accepted
+        ? targetOrder.paymentStatus === 'paid'
+          ? 'settled'
+          : 'accepted'
+        : 'settling'
       const nextOrders = state.orders.map((item) =>
         item.id === orderId
           ? {
@@ -2414,6 +2439,106 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
           ...state.notifications,
         ],
       })
+    },
+    confirmOrderReceipt: (input: ConfirmOrderReceiptInput): ConfirmOrderReceiptResult => {
+      const state = get()
+      const order = state.orders.find((item) => item.id === input.orderId)
+
+      if (!order) {
+        return {
+          success: false,
+          error: '订单不存在',
+        }
+      }
+
+      if (input.amount <= 0) {
+        return {
+          success: false,
+          error: '到账金额必须大于 0',
+        }
+      }
+
+      const relatedPlan = state.plans.find((item) => item.id === order.planId)
+      if (!relatedPlan) {
+        return {
+          success: false,
+          error: '关联计划不存在',
+        }
+      }
+
+      const settlementRatio =
+        typeof order.settlementWeight === 'number' && relatedPlan.plannedVolume > 0
+          ? order.settlementWeight / relatedPlan.plannedVolume
+          : 1
+      const receivableAmount = ensureFixed(relatedPlan.totalAmount * settlementRatio)
+      const currentReceived = order.receivedAmount ?? 0
+
+      if (currentReceived >= receivableAmount) {
+        return {
+          success: false,
+          error: '该订单已完成到款确认',
+        }
+      }
+
+      const nextReceived = ensureFixed(currentReceived + input.amount)
+      if (nextReceived > ensureFixed(receivableAmount + 0.01)) {
+        return {
+          success: false,
+          error: '到账金额超过应收金额',
+        }
+      }
+
+      const nextPaymentStatus: Order['paymentStatus'] =
+        nextReceived + 0.01 >= receivableAmount ? 'paid' : 'partial'
+      const nextOrderStatus: OrderStatus =
+        nextPaymentStatus === 'paid' && ['accepted', 'settling'].includes(order.status)
+          ? 'settled'
+          : order.status
+
+      const nextOrders = state.orders.map((item) =>
+        item.id === input.orderId
+          ? {
+              ...item,
+              paymentStatus: nextPaymentStatus,
+              receivedAmount: nextReceived,
+              lastReceivedAt: input.receivedAt,
+              status: nextOrderStatus,
+            }
+          : item,
+      )
+
+      const receiver = input.receiver.trim() || '财务'
+      const note = input.note?.trim()
+      set({
+        orders: nextOrders,
+        account: {
+          total: ensureFixed(state.account.total + input.amount),
+          available: ensureFixed(state.account.available + input.amount),
+          occupied: state.account.occupied,
+          frozen: state.account.frozen,
+        },
+        ledgers: [
+          createLedger(
+            'deposit',
+            input.amount,
+            order.number,
+            note ? `订单到款确认（${receiver}）：${note}` : `订单到款确认（${receiver}）`,
+          ),
+          ...state.ledgers,
+        ],
+        notifications: [
+          createNotification(
+            'finance',
+            nextPaymentStatus === 'paid' ? '订单已全额到款' : '订单部分到款',
+            `${order.number} 已确认到账 ${input.amount.toLocaleString('zh-CN')} 元`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+      }
     },
     registerDeposit: (input: DepositInput) => {
       const state = get()
