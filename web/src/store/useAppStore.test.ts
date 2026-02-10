@@ -383,4 +383,32 @@ describe('app store domain flow', () => {
     })
     expect(loginResult.success).toBe(true)
   })
+
+  it('creates onboarding application when external account registers', () => {
+    const store = createAppStore(defaultMockData())
+    const beforeCount = store.getState().onboardingApplications.length
+
+    const registerResult = store.getState().registerAccount({
+      organizationName: '宁波港新能物流有限公司',
+      contactName: '赵伟',
+      phone: '13800138112',
+      password: 'welcome123',
+      role: 'carrier',
+      verifyCode: '123456',
+    })
+
+    expect(registerResult.success).toBe(true)
+    expect(store.getState().onboardingApplications.length).toBe(beforeCount + 1)
+    expect(store.getState().onboardingApplications[0].organizationName).toBe('宁波港新能物流有限公司')
+    expect(store.getState().onboardingApplications[0].status).toBe('pending')
+  })
+
+  it('allows rejected onboarding application to resubmit', () => {
+    const store = createAppStore(defaultMockData())
+    store.getState().resubmitOnboarding('onb-002')
+
+    const app = store.getState().onboardingApplications.find((item) => item.id === 'onb-002')
+    expect(app?.status).toBe('pending')
+    expect(app?.rejectReason).toBeUndefined()
+  })
 })

@@ -12,6 +12,7 @@ import InvoicePage from './pages/InvoicePage'
 import MobileTaskPage from './pages/MobileTaskPage'
 import NotFoundPage from './pages/NotFoundPage'
 import OnboardingPage from './pages/OnboardingPage'
+import OnboardingStatusPage from './pages/OnboardingStatusPage'
 import PlanApprovalPage from './pages/PlanApprovalPage'
 import PlanCreatePage from './pages/PlanCreatePage'
 import PlanListPage from './pages/PlanListPage'
@@ -24,6 +25,7 @@ import BasicInfoPage from './pages/BasicInfoPage'
 import DailyPlanReportPage from './pages/DailyPlanReportPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import LoginPage from './pages/LoginPage'
+import MessageCenterPage from './pages/MessageCenterPage'
 import OrderListPage from './pages/OrderListPage'
 import OrderManagementPage from './pages/OrderManagementPage'
 import RegisterPage from './pages/RegisterPage'
@@ -175,6 +177,14 @@ function App() {
             }
           />
           <Route
+            path="onboarding/status"
+            element={
+              <PermissionGuard>
+                <OnboardingStatusPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
             path="basic-info"
             element={
               <PermissionGuard>
@@ -235,6 +245,14 @@ function App() {
             element={
               <PermissionGuard>
                 <AttachmentCenterPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="messages"
+            element={
+              <PermissionGuard>
+                <MessageCenterPage />
               </PermissionGuard>
             }
           />

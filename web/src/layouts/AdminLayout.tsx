@@ -144,6 +144,13 @@ function AdminLayout() {
                         </Typography.Paragraph>
                       </div>
                     ))}
+                    <Button
+                      type="link"
+                      style={{ paddingInline: 0, marginTop: 4 }}
+                      onClick={() => navigate('/app/messages')}
+                    >
+                      查看全部消息
+                    </Button>
                   </div>
                 }
               >

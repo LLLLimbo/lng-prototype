@@ -541,6 +541,7 @@ export interface AppState extends AppSeed {
   registerAccount: (input: RegisterInput) => RegisterResult
   resetPassword: (input: ResetPasswordInput) => ResetPasswordResult
   logout: () => void
+  resubmitOnboarding: (applicationId: string) => void
   switchRole: (role: RoleKey) => void
   addSite: (input: AddSiteInput) => string
   updateSite: (input: UpdateSiteInput) => void
@@ -1141,8 +1142,34 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         customerId: input.role === 'terminal' ? nextId('customer') : undefined,
       }
 
+      const organizationType: OnboardingApplication['organizationType'] =
+        input.role === 'terminal'
+          ? 'terminal'
+          : input.role === 'carrier' || input.role === 'driver'
+            ? 'carrier'
+            : 'upstream'
+
+      const onboardingApplication: OnboardingApplication = {
+        id: nextId('onb'),
+        organizationName: authUser.organizationName,
+        organizationType,
+        contactName: authUser.contactName,
+        contactPhone: authUser.phone,
+        submittedAt: now(),
+        status: 'pending',
+      }
+
       set({
         authUsers: [authUser, ...state.authUsers],
+        onboardingApplications: [onboardingApplication, ...state.onboardingApplications],
+        notifications: [
+          createNotification(
+            'approval',
+            '收到入驻申请',
+            `${onboardingApplication.organizationName} 已提交入驻资料，待市场部审核。`,
+          ),
+          ...state.notifications,
+        ],
       })
 
       return { success: true }
@@ -1186,6 +1213,37 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
       set({
         isAuthenticated: false,
         currentUser: undefined,
+      })
+    },
+    resubmitOnboarding: (applicationId: string) => {
+      const state = get()
+      const target = state.onboardingApplications.find((item) => item.id === applicationId)
+
+      if (!target || target.status !== 'rejected') {
+        return
+      }
+
+      const nextApplications = state.onboardingApplications.map((item) =>
+        item.id === applicationId
+          ? {
+              ...item,
+              status: 'pending' as const,
+              rejectReason: undefined,
+              reviewer: undefined,
+            }
+          : item,
+      )
+
+      set({
+        onboardingApplications: nextApplications,
+        notifications: [
+          createNotification(
+            'approval',
+            '入驻申请已重新提交',
+            `${target.organizationName} 已重新提交入驻资料。`,
+          ),
+          ...state.notifications,
+        ],
       })
     },
     switchRole: (role: RoleKey) => {

@@ -13,6 +13,7 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   LineChartOutlined,
+  MessageOutlined,
   MobileOutlined,
   PaperClipOutlined,
   ScheduleOutlined,
@@ -81,6 +82,13 @@ export const appMenus: AppMenuItem[] = [
     roles: ['market'],
   },
   {
+    key: 'onboarding-status',
+    label: '入驻通知',
+    path: '/app/onboarding/status',
+    icon: <AuditOutlined />,
+    roles: ['terminal', 'carrier', 'driver'],
+  },
+  {
     key: 'basic-info',
     label: '基础信息',
     path: '/app/basic-info',
@@ -135,6 +143,13 @@ export const appMenus: AppMenuItem[] = [
     path: '/app/attachments',
     icon: <PaperClipOutlined />,
     roles: ['terminal', 'market', 'dispatch', 'finance', 'carrier'],
+  },
+  {
+    key: 'messages',
+    label: '消息中心',
+    path: '/app/messages',
+    icon: <MessageOutlined />,
+    roles: ['terminal', 'market', 'dispatch', 'finance', 'carrier', 'driver'],
   },
   {
     key: 'mobile',
