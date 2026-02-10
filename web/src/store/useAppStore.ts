@@ -175,6 +175,44 @@ export interface InvoiceItem {
   issueDate: string
   statementNo: string
   status: 'pending' | 'issued'
+  applicationId?: string
+  taxRate?: number
+  attachmentName?: string
+  issuedBy?: string
+}
+
+export interface UpstreamReconciliationArchive {
+  id: string
+  upstreamCompany: string
+  period: string
+  fileName: string
+  archivedBy: string
+  archivedAt: string
+  note?: string
+  status: 'archived'
+}
+
+export interface InvoiceApplication {
+  id: string
+  number: string
+  statementId: string
+  statementNo: string
+  customerName: string
+  orderNumbers: string[]
+  originalAmount: number
+  discountEnabled: boolean
+  discountAmount: number
+  requestedAmount: number
+  invoiceTitle: string
+  taxNo: string
+  applicant: string
+  appliedAt: string
+  status: 'pending-review' | 'approved' | 'rejected' | 'invoiced'
+  reviewer?: string
+  reviewedAt?: string
+  rejectReason?: string
+  note?: string
+  invoiceId?: string
 }
 
 export interface OnboardingApplication {
@@ -300,6 +338,46 @@ export interface UploadOnboardingContractInput {
   effectiveDate: string
 }
 
+export interface UploadUpstreamArchiveInput {
+  upstreamCompany: string
+  period: string
+  fileName: string
+  archivedBy: string
+  note?: string
+}
+
+export interface CreateInvoiceApplicationInput {
+  statementId: string
+  discountEnabled: boolean
+  discountAmount: number
+  invoiceTitle: string
+  taxNo: string
+  applicant: string
+  note?: string
+}
+
+export interface CreateInvoiceApplicationResult {
+  success: boolean
+  errors: string[]
+  applicationId?: string
+}
+
+export interface ReviewInvoiceApplicationInput {
+  applicationId: string
+  action: 'approve' | 'reject'
+  reviewer: string
+  reason?: string
+}
+
+export interface IssueInvoiceInput {
+  invoiceId: string
+  issuer: string
+  invoiceNo?: string
+  issueDate?: string
+  taxRate?: number
+  attachmentName?: string
+}
+
 export interface AppSeed {
   currentRole: RoleKey
   activeCustomerId: string
@@ -316,6 +394,8 @@ export interface AppSeed {
   notifications: NotificationItem[]
   reconciliations: ReconciliationStatement[]
   invoices: InvoiceItem[]
+  upstreamArchives: UpstreamReconciliationArchive[]
+  invoiceApplications: InvoiceApplication[]
   onboardingApplications: OnboardingApplication[]
   exceptions: ExceptionCase[]
   dashboardMetrics: Record<RoleKey, DashboardMetric[]>
@@ -342,7 +422,12 @@ export interface AppState extends AppSeed {
     actorType: 'platform' | 'customer',
     actor: string,
   ) => void
-  issueInvoice: (invoiceId: string, issuer: string) => void
+  uploadUpstreamArchive: (input: UploadUpstreamArchiveInput) => string
+  createInvoiceApplication: (
+    input: CreateInvoiceApplicationInput,
+  ) => CreateInvoiceApplicationResult
+  reviewInvoiceApplication: (input: ReviewInvoiceApplicationInput) => void
+  issueInvoice: (input: IssueInvoiceInput) => void
   reviewOnboarding: (input: ReviewOnboardingInput) => void
   uploadOnboardingContract: (input: UploadOnboardingContractInput) => void
   archiveOrder: (orderId: string, operator: string) => ArchiveActionResult
@@ -612,6 +697,27 @@ export const defaultMockData = (): AppSeed => ({
       orderNumbers: ['OD-20260209-001'],
       stampLogs: [],
     },
+    {
+      id: 'rc-202601-003',
+      number: 'RC-202601-003',
+      customerName: '华东能源科技有限公司',
+      period: '2026-01-01 ~ 2026-01-31',
+      status: 'double-confirmed',
+      totalAmount: 120000,
+      orderNumbers: ['OD-20260131-008'],
+      stampLogs: [
+        {
+          actorType: 'platform',
+          actor: '市场部-王经理',
+          stampedAt: '2026-02-01T09:30:00.000Z',
+        },
+        {
+          actorType: 'customer',
+          actor: '终端用户-张三',
+          stampedAt: '2026-02-01T10:10:00.000Z',
+        },
+      ],
+    },
   ],
   invoices: [
     {
@@ -631,6 +737,37 @@ export const defaultMockData = (): AppSeed => ({
       issueDate: '2026-02-09',
       statementNo: 'RC-202602-001',
       status: 'pending',
+    },
+  ],
+  upstreamArchives: [
+    {
+      id: 'upa-001',
+      upstreamCompany: '中海气源公司',
+      period: '2026-01',
+      fileName: 'upstream-reconciliation-202601.pdf',
+      archivedBy: '市场部-周婷',
+      archivedAt: '2026-02-02T10:40:00.000Z',
+      note: '线下对账签字版',
+      status: 'archived',
+    },
+  ],
+  invoiceApplications: [
+    {
+      id: 'iap-001',
+      number: 'IA-20260209-001',
+      statementId: 'rc-202601-003',
+      statementNo: 'RC-202601-003',
+      customerName: '华东能源科技有限公司',
+      orderNumbers: ['OD-20260131-008'],
+      originalAmount: 120000,
+      discountEnabled: false,
+      discountAmount: 0,
+      requestedAmount: 120000,
+      invoiceTitle: '华东能源科技有限公司',
+      taxNo: '91320000MA1234567X',
+      applicant: '市场部-王经理',
+      appliedAt: '2026-02-09T09:30:00.000Z',
+      status: 'pending-review',
     },
   ],
   onboardingApplications: [
@@ -1197,31 +1334,239 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
         ],
       })
     },
-    issueInvoice: (invoiceId: string, issuer: string) => {
+    uploadUpstreamArchive: (input: UploadUpstreamArchiveInput): string => {
       const state = get()
-      const target = state.invoices.find((item) => item.id === invoiceId)
+      const archiveId = nextId('upa')
+      const record: UpstreamReconciliationArchive = {
+        id: archiveId,
+        upstreamCompany: input.upstreamCompany,
+        period: input.period,
+        fileName: input.fileName,
+        archivedBy: input.archivedBy,
+        archivedAt: now(),
+        note: input.note,
+        status: 'archived',
+      }
+
+      set({
+        upstreamArchives: [record, ...state.upstreamArchives],
+        notifications: [
+          createNotification(
+            'system',
+            '上游对账已存档',
+            `${record.upstreamCompany} ${record.period} 对账文件已归档。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return archiveId
+    },
+    createInvoiceApplication: (
+      input: CreateInvoiceApplicationInput,
+    ): CreateInvoiceApplicationResult => {
+      const state = get()
+      const errors: string[] = []
+      const statement = state.reconciliations.find((item) => item.id === input.statementId)
+
+      if (!statement) {
+        errors.push('请选择有效的对账单')
+      }
+
+      if (
+        statement &&
+        !['double-confirmed', 'offline-confirmed'].includes(statement.status)
+      ) {
+        errors.push('仅双方已确认或线下已确认的对账单可申请开票')
+      }
+
+      if (!input.invoiceTitle.trim()) {
+        errors.push('开票抬头不能为空')
+      }
+
+      if (!input.taxNo.trim()) {
+        errors.push('税号不能为空')
+      }
+
+      if (input.discountEnabled && input.discountAmount <= 0) {
+        errors.push('启用优惠时，优惠金额必须大于 0')
+      }
+
+      if (
+        statement &&
+        input.discountEnabled &&
+        input.discountAmount > statement.totalAmount
+      ) {
+        errors.push('优惠金额不能超过对账金额')
+      }
+
+      if (!input.applicant.trim()) {
+        errors.push('申请人不能为空')
+      }
+
+      if (errors.length > 0 || !statement) {
+        return {
+          success: false,
+          errors,
+        }
+      }
+
+      const appliedAmount = ensureFixed(
+        statement.totalAmount - (input.discountEnabled ? input.discountAmount : 0),
+      )
+      const applicationId = nextId('iap')
+      const application: InvoiceApplication = {
+        id: applicationId,
+        number: nextNo('IA'),
+        statementId: statement.id,
+        statementNo: statement.number,
+        customerName: statement.customerName,
+        orderNumbers: statement.orderNumbers,
+        originalAmount: statement.totalAmount,
+        discountEnabled: input.discountEnabled,
+        discountAmount: input.discountEnabled ? input.discountAmount : 0,
+        requestedAmount: appliedAmount,
+        invoiceTitle: input.invoiceTitle,
+        taxNo: input.taxNo,
+        applicant: input.applicant,
+        appliedAt: now(),
+        status: 'pending-review',
+        note: input.note,
+      }
+
+      set({
+        invoiceApplications: [application, ...state.invoiceApplications],
+        notifications: [
+          createNotification(
+            'finance',
+            '新增开票申请待审核',
+            `${application.number} 已提交，待财务审核。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+
+      return {
+        success: true,
+        errors: [],
+        applicationId,
+      }
+    },
+    reviewInvoiceApplication: (input: ReviewInvoiceApplicationInput) => {
+      const state = get()
+      const target = state.invoiceApplications.find((item) => item.id === input.applicationId)
+
+      if (!target || target.status !== 'pending-review') {
+        return
+      }
+
+      if (input.action === 'reject') {
+        const nextApplications = state.invoiceApplications.map((item) =>
+          item.id === input.applicationId
+            ? {
+                ...item,
+                status: 'rejected' as const,
+                reviewer: input.reviewer,
+                reviewedAt: now(),
+                rejectReason: input.reason ?? '申请信息不完整',
+              }
+            : item,
+        )
+
+        set({
+          invoiceApplications: nextApplications,
+          notifications: [
+            createNotification(
+              'finance',
+              '开票申请已驳回',
+              `${target.number} 已驳回，原因：${input.reason ?? '申请信息不完整'}`,
+            ),
+            ...state.notifications,
+          ],
+        })
+
+        return
+      }
+
+      const pendingInvoiceId = nextId('inv')
+      const pendingInvoice: InvoiceItem = {
+        id: pendingInvoiceId,
+        number: nextNo('INV'),
+        customerName: target.customerName,
+        amount: target.requestedAmount,
+        issueDate: new Date().toISOString().slice(0, 10),
+        statementNo: target.statementNo,
+        status: 'pending',
+        applicationId: target.id,
+      }
+
+      const nextApplications = state.invoiceApplications.map((item) =>
+        item.id === input.applicationId
+          ? {
+              ...item,
+              status: 'approved' as const,
+              reviewer: input.reviewer,
+              reviewedAt: now(),
+              rejectReason: undefined,
+              invoiceId: pendingInvoice.id,
+            }
+          : item,
+      )
+
+      set({
+        invoiceApplications: nextApplications,
+        invoices: [pendingInvoice, ...state.invoices],
+        notifications: [
+          createNotification(
+            'finance',
+            '开票申请已通过',
+            `${target.number} 已通过审核，生成待开票任务 ${pendingInvoice.number}。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    issueInvoice: (input: IssueInvoiceInput) => {
+      const state = get()
+      const target = state.invoices.find((item) => item.id === input.invoiceId)
 
       if (!target || target.status === 'issued') {
         return
       }
 
       const nextInvoices = state.invoices.map((item) =>
-        item.id === invoiceId
+        item.id === input.invoiceId
           ? {
               ...item,
+              number: input.invoiceNo?.trim() ? input.invoiceNo.trim() : item.number,
               status: 'issued' as const,
-              issueDate: new Date().toISOString().slice(0, 10),
+              issueDate: input.issueDate ?? new Date().toISOString().slice(0, 10),
+              taxRate: input.taxRate,
+              attachmentName: input.attachmentName,
+              issuedBy: input.issuer,
             }
           : item,
       )
 
+      const nextApplications = target.applicationId
+        ? state.invoiceApplications.map((item) =>
+            item.id === target.applicationId
+              ? {
+                  ...item,
+                  status: 'invoiced' as const,
+                }
+              : item,
+          )
+        : state.invoiceApplications
+
       set({
         invoices: nextInvoices,
+        invoiceApplications: nextApplications,
         notifications: [
           createNotification(
             'finance',
             '发票已开具',
-            `${target.number} 已由 ${issuer} 完成开票并归档。`,
+            `${target.number} 已由 ${input.issuer} 完成开票并归档。`,
           ),
           ...state.notifications,
         ],

@@ -137,4 +137,99 @@ describe('app store domain flow', () => {
     expect(app?.level).toBe('A')
     expect(app?.contractName).toBe('service-contract.pdf')
   })
+
+  it('blocks invoice application when statement is not confirmed', () => {
+    const store = createAppStore(defaultMockData())
+    const draftStatementId = 'rc-202602-001'
+
+    const result = store.getState().createInvoiceApplication({
+      statementId: draftStatementId,
+      discountEnabled: false,
+      discountAmount: 0,
+      invoiceTitle: '华东能源科技有限公司',
+      taxNo: '91320000MA1234567X',
+      applicant: '市场部-王经理',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.errors[0]).toContain('仅双方已确认或线下已确认的对账单可申请开票')
+  })
+
+  it('approves invoice application and generates pending invoice', () => {
+    const store = createAppStore(defaultMockData())
+    const result = store.getState().createInvoiceApplication({
+      statementId: 'rc-202601-003',
+      discountEnabled: true,
+      discountAmount: 5000,
+      invoiceTitle: '华东能源科技有限公司',
+      taxNo: '91320000MA1234567X',
+      applicant: '市场部-王经理',
+      note: '周期优惠',
+    })
+
+    expect(result.success).toBe(true)
+
+    const applicationId = result.applicationId as string
+    store.getState().reviewInvoiceApplication({
+      applicationId,
+      action: 'approve',
+      reviewer: '财务-陈会计',
+    })
+
+    const stateAfterApprove = store.getState()
+    const application = stateAfterApprove.invoiceApplications.find(
+      (item) => item.id === applicationId,
+    )
+    const generatedInvoice = stateAfterApprove.invoices.find(
+      (item) => item.applicationId === applicationId,
+    )
+
+    expect(application?.status).toBe('approved')
+    expect(application?.requestedAmount).toBe(115000)
+    expect(generatedInvoice?.status).toBe('pending')
+
+    if (generatedInvoice) {
+      store.getState().issueInvoice({
+        invoiceId: generatedInvoice.id,
+        issuer: '财务-陈会计',
+        invoiceNo: 'INV-20260210-168',
+        issueDate: '2026-02-10',
+        taxRate: 13,
+        attachmentName: 'invoice-20260210-168.pdf',
+      })
+    }
+
+    const stateAfterIssue = store.getState()
+    const invoiced = stateAfterIssue.invoices.find(
+      (item) => item.applicationId === applicationId,
+    )
+
+    expect(
+      stateAfterIssue.invoiceApplications.find((item) => item.id === applicationId)?.status,
+    ).toBe('invoiced')
+    expect(invoiced?.status).toBe('issued')
+    expect(invoiced?.number).toBe('INV-20260210-168')
+    expect(invoiced?.issueDate).toBe('2026-02-10')
+    expect(invoiced?.taxRate).toBe(13)
+    expect(invoiced?.attachmentName).toBe('invoice-20260210-168.pdf')
+    expect(invoiced?.issuedBy).toBe('财务-陈会计')
+  })
+
+  it('uploads upstream reconciliation archive record', () => {
+    const store = createAppStore(defaultMockData())
+    const archiveId = store.getState().uploadUpstreamArchive({
+      upstreamCompany: '华北气源公司',
+      period: '2026-02',
+      fileName: 'upstream-202602.pdf',
+      archivedBy: '市场部-周婷',
+      note: '线下盖章后上传',
+    })
+
+    const record = store
+      .getState()
+      .upstreamArchives.find((item) => item.id === archiveId)
+
+    expect(record?.status).toBe('archived')
+    expect(record?.fileName).toBe('upstream-202602.pdf')
+  })
 })
