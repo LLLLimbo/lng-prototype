@@ -324,6 +324,45 @@ export interface ProcessExceptionInput {
   note?: string
 }
 
+export interface AddSiteInput {
+  name: string
+  type: Site['type']
+  status?: Site['status']
+  maintenancePolicy?: Site['maintenancePolicy']
+  maintenanceWindow?: string
+}
+
+export interface UpdateSiteInput {
+  siteId: string
+  patch: Partial<
+    Pick<Site, 'name' | 'type' | 'status' | 'maintenancePolicy' | 'maintenanceWindow'>
+  >
+}
+
+export interface AddVehicleInput {
+  plateNo: string
+  capacity: number
+  certExpiry: string
+  valid: boolean
+}
+
+export interface UpdateVehicleInput {
+  vehicleId: string
+  patch: Partial<Pick<Vehicle, 'plateNo' | 'capacity' | 'certExpiry' | 'valid'>>
+}
+
+export interface AddPersonInput {
+  name: string
+  role: Person['role']
+  certExpiry: string
+  valid: boolean
+}
+
+export interface UpdatePersonInput {
+  personId: string
+  patch: Partial<Pick<Person, 'name' | 'role' | 'certExpiry' | 'valid'>>
+}
+
 export interface ReviewOnboardingInput {
   applicationId: string
   action: 'approve' | 'reject'
@@ -403,6 +442,15 @@ export interface AppSeed {
 
 export interface AppState extends AppSeed {
   switchRole: (role: RoleKey) => void
+  addSite: (input: AddSiteInput) => string
+  updateSite: (input: UpdateSiteInput) => void
+  disableSite: (siteId: string) => void
+  addVehicle: (input: AddVehicleInput) => string
+  updateVehicle: (input: UpdateVehicleInput) => void
+  disableVehicle: (vehicleId: string) => void
+  addPerson: (input: AddPersonInput) => string
+  updatePerson: (input: UpdatePersonInput) => void
+  disablePerson: (personId: string) => void
   createPlan: (input: PlanInput) => CreatePlanResult
   reviewPlan: (input: ReviewPlanInput) => void
   cancelPlan: (planId: string, reason: string) => void
@@ -844,6 +892,179 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
     ...seed,
     switchRole: (role: RoleKey) => {
       set({ currentRole: role })
+    },
+    addSite: (input: AddSiteInput): string => {
+      const state = get()
+      const siteId = nextId('site')
+      const site: Site = {
+        id: siteId,
+        name: input.name.trim(),
+        type: input.type,
+        status: input.status ?? 'enabled',
+        maintenancePolicy: input.maintenancePolicy,
+        maintenanceWindow: input.maintenanceWindow?.trim() || undefined,
+      }
+
+      set({
+        sites: [site, ...state.sites],
+      })
+
+      return siteId
+    },
+    updateSite: (input: UpdateSiteInput) => {
+      const state = get()
+      const target = state.sites.find((item) => item.id === input.siteId)
+
+      if (!target) {
+        return
+      }
+
+      const nextSites = state.sites.map((item) =>
+        item.id === input.siteId
+          ? {
+              ...item,
+              ...input.patch,
+              name: input.patch.name?.trim() || item.name,
+              maintenanceWindow:
+                input.patch.maintenanceWindow === undefined
+                  ? item.maintenanceWindow
+                  : input.patch.maintenanceWindow.trim() || undefined,
+            }
+          : item,
+      )
+
+      set({ sites: nextSites })
+    },
+    disableSite: (siteId: string) => {
+      const state = get()
+      const target = state.sites.find((item) => item.id === siteId)
+
+      if (!target) {
+        return
+      }
+
+      const nextSites = state.sites.map((item) =>
+        item.id === siteId
+          ? {
+              ...item,
+              status: 'disabled' as const,
+            }
+          : item,
+      )
+
+      set({ sites: nextSites })
+    },
+    addVehicle: (input: AddVehicleInput): string => {
+      const state = get()
+      const vehicleId = nextId('vehicle')
+      const vehicle: Vehicle = {
+        id: vehicleId,
+        plateNo: input.plateNo.trim(),
+        capacity: input.capacity,
+        certExpiry: input.certExpiry,
+        valid: input.valid,
+      }
+
+      set({
+        vehicles: [vehicle, ...state.vehicles],
+      })
+
+      return vehicleId
+    },
+    updateVehicle: (input: UpdateVehicleInput) => {
+      const state = get()
+      const target = state.vehicles.find((item) => item.id === input.vehicleId)
+
+      if (!target) {
+        return
+      }
+
+      const nextVehicles = state.vehicles.map((item) =>
+        item.id === input.vehicleId
+          ? {
+              ...item,
+              ...input.patch,
+              plateNo: input.patch.plateNo?.trim() || item.plateNo,
+            }
+          : item,
+      )
+
+      set({ vehicles: nextVehicles })
+    },
+    disableVehicle: (vehicleId: string) => {
+      const state = get()
+      const target = state.vehicles.find((item) => item.id === vehicleId)
+
+      if (!target) {
+        return
+      }
+
+      const nextVehicles = state.vehicles.map((item) =>
+        item.id === vehicleId
+          ? {
+              ...item,
+              valid: false,
+            }
+          : item,
+      )
+
+      set({ vehicles: nextVehicles })
+    },
+    addPerson: (input: AddPersonInput): string => {
+      const state = get()
+      const personId = nextId('person')
+      const person: Person = {
+        id: personId,
+        name: input.name.trim(),
+        role: input.role,
+        certExpiry: input.certExpiry,
+        valid: input.valid,
+      }
+
+      set({
+        personnel: [person, ...state.personnel],
+      })
+
+      return personId
+    },
+    updatePerson: (input: UpdatePersonInput) => {
+      const state = get()
+      const target = state.personnel.find((item) => item.id === input.personId)
+
+      if (!target) {
+        return
+      }
+
+      const nextPersonnel = state.personnel.map((item) =>
+        item.id === input.personId
+          ? {
+              ...item,
+              ...input.patch,
+              name: input.patch.name?.trim() || item.name,
+            }
+          : item,
+      )
+
+      set({ personnel: nextPersonnel })
+    },
+    disablePerson: (personId: string) => {
+      const state = get()
+      const target = state.personnel.find((item) => item.id === personId)
+
+      if (!target) {
+        return
+      }
+
+      const nextPersonnel = state.personnel.map((item) =>
+        item.id === personId
+          ? {
+              ...item,
+              valid: false,
+            }
+          : item,
+      )
+
+      set({ personnel: nextPersonnel })
     },
     createPlan: (input: PlanInput): CreatePlanResult => {
       const state = get()

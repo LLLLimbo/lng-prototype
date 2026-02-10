@@ -232,4 +232,73 @@ describe('app store domain flow', () => {
     expect(record?.status).toBe('archived')
     expect(record?.fileName).toBe('upstream-202602.pdf')
   })
+
+  it('supports site add, edit and disable lifecycle', () => {
+    const store = createAppStore(defaultMockData())
+
+    const siteId = store.getState().addSite({
+      name: '南京江北卸气站',
+      type: 'unload',
+      status: 'enabled',
+      maintenancePolicy: 'manual',
+      maintenanceWindow: '2026-02-10 ~ 2026-02-12',
+    })
+
+    store.getState().updateSite({
+      siteId,
+      patch: {
+        name: '南京江北综合站',
+        maintenancePolicy: 'block',
+      },
+    })
+    store.getState().disableSite(siteId)
+
+    const site = store.getState().sites.find((item) => item.id === siteId)
+    expect(site?.name).toBe('南京江北综合站')
+    expect(site?.status).toBe('disabled')
+    expect(site?.maintenancePolicy).toBe('block')
+  })
+
+  it('supports vehicle and personnel maintenance operations', () => {
+    const store = createAppStore(defaultMockData())
+
+    const vehicleId = store.getState().addVehicle({
+      plateNo: '苏C·LNG66',
+      capacity: 30,
+      certExpiry: '2026-10-31',
+      valid: true,
+    })
+
+    store.getState().updateVehicle({
+      vehicleId,
+      patch: {
+        capacity: 32,
+        certExpiry: '2026-11-30',
+      },
+    })
+    store.getState().disableVehicle(vehicleId)
+
+    const personId = store.getState().addPerson({
+      name: '周航',
+      role: 'driver',
+      certExpiry: '2026-09-30',
+      valid: true,
+    })
+
+    store.getState().updatePerson({
+      personId,
+      patch: {
+        role: 'escort',
+      },
+    })
+    store.getState().disablePerson(personId)
+
+    const vehicle = store.getState().vehicles.find((item) => item.id === vehicleId)
+    const person = store.getState().personnel.find((item) => item.id === personId)
+
+    expect(vehicle?.capacity).toBe(32)
+    expect(vehicle?.valid).toBe(false)
+    expect(person?.role).toBe('escort')
+    expect(person?.valid).toBe(false)
+  })
 })

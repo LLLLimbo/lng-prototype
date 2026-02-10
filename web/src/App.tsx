@@ -19,6 +19,7 @@ import ReconciliationPage from './pages/ReconciliationPage'
 import ReportsPage from './pages/ReportsPage'
 import SettlementPage from './pages/SettlementPage'
 import ArchivePage from './pages/ArchivePage'
+import BasicInfoPage from './pages/BasicInfoPage'
 import { useAppStore } from './store/useAppStore'
 
 interface GuardProps {
@@ -98,6 +99,14 @@ function App() {
             element={
               <PermissionGuard>
                 <OnboardingPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="basic-info"
+            element={
+              <PermissionGuard>
+                <BasicInfoPage />
               </PermissionGuard>
             }
           />

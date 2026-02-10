@@ -1,4 +1,5 @@
 import {
+  ApartmentOutlined,
   AlertOutlined,
   AuditOutlined,
   BarChartOutlined,
@@ -68,6 +69,13 @@ export const appMenus: AppMenuItem[] = [
     path: '/app/onboarding',
     icon: <AuditOutlined />,
     roles: ['market'],
+  },
+  {
+    key: 'basic-info',
+    label: '基础信息',
+    path: '/app/basic-info',
+    icon: <ApartmentOutlined />,
+    roles: ['terminal', 'market', 'dispatch', 'carrier'],
   },
   {
     key: 'fulfillment',
