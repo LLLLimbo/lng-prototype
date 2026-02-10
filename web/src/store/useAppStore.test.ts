@@ -301,4 +301,86 @@ describe('app store domain flow', () => {
     expect(person?.role).toBe('escort')
     expect(person?.valid).toBe(false)
   })
+
+  it('submits and approves order supplement workflow', () => {
+    const store = createAppStore(defaultMockData())
+
+    store.getState().submitOrderSupplement({
+      orderId: 'order-2001',
+      upstreamOrderNo: 'UP-20260210-001',
+      loadSiteName: '宁波接收站',
+      estimatedLoadAt: '2026-02-10 13:30',
+      supplementDocName: 'upstream-outbound-0210.pdf',
+    })
+
+    store.getState().reviewOrderSupplement({
+      orderId: 'order-2001',
+      action: 'approve',
+      reviewer: '调度中心-王主管',
+    })
+
+    const order = store.getState().orders.find((item) => item.id === 'order-2001')
+    expect(order?.supplementStatus).toBe('approved')
+    expect(order?.status).toBe('stocking')
+    expect(order?.upstreamOrderNo).toBe('UP-20260210-001')
+  })
+
+  it('generates daily plan report snapshot by date', () => {
+    const store = createAppStore(defaultMockData())
+
+    const reportId = store.getState().generateDailyPlanReport({
+      reportDate: '2026-02-09',
+      generatedBy: '市场部-周婷',
+    })
+
+    const report = store.getState().dailyPlanReports.find((item) => item.id === reportId)
+    expect(report?.reportDate).toBe('2026-02-09')
+    expect(report?.plans.length).toBeGreaterThan(0)
+    expect(report?.generatedBy).toBe('市场部-周婷')
+  })
+
+  it('supports auth login and logout with mock verify code', () => {
+    const store = createAppStore(defaultMockData())
+    const loginResult = store.getState().login({
+      phone: '13800138001',
+      password: '123456',
+      verifyCode: '123456',
+    })
+
+    expect(loginResult.success).toBe(true)
+    expect(store.getState().isAuthenticated).toBe(true)
+    expect(store.getState().currentRole).toBe('market')
+
+    store.getState().logout()
+    expect(store.getState().isAuthenticated).toBe(false)
+    expect(store.getState().currentUser).toBeUndefined()
+  })
+
+  it('supports register and reset password flow', () => {
+    const store = createAppStore(defaultMockData())
+    const registerResult = store.getState().registerAccount({
+      organizationName: '苏州新奥燃气有限公司',
+      contactName: '李敏',
+      phone: '13800138111',
+      password: 'init123',
+      role: 'terminal',
+      verifyCode: '123456',
+    })
+
+    expect(registerResult.success).toBe(true)
+
+    const resetResult = store.getState().resetPassword({
+      phone: '13800138111',
+      verifyCode: '123456',
+      newPassword: 'next123',
+    })
+    expect(resetResult.success).toBe(true)
+
+    const loginResult = store.getState().login({
+      phone: '13800138111',
+      password: 'next123',
+      verifyCode: '123456',
+    })
+    expect(loginResult.success).toBe(true)
+  })
 })

@@ -1,5 +1,6 @@
 import {
   BellOutlined,
+  LogoutOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
   UserOutlined,
@@ -31,7 +32,9 @@ function AdminLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const role = useAppStore((state) => state.currentRole)
+  const currentUser = useAppStore((state) => state.currentUser)
   const switchRole = useAppStore((state) => state.switchRole)
+  const logout = useAppStore((state) => state.logout)
   const notifications = useAppStore((state) => state.notifications)
   const markNotificationRead = useAppStore((state) => state.markNotificationRead)
   const plans = useAppStore((state) => state.plans)
@@ -154,12 +157,20 @@ function AdminLayout() {
                   items: [
                     { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助文档（Mock）' },
                     { key: 'profile', icon: <UserOutlined />, label: '组织切换（Mock）' },
+                    { type: 'divider' },
+                    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
                   ],
+                  onClick: ({ key }) => {
+                    if (key === 'logout') {
+                      logout()
+                      navigate('/auth/login')
+                    }
+                  },
                 }}
               >
                 <Space style={{ cursor: 'pointer' }}>
                   <Avatar icon={<UserOutlined />} />
-                  <Typography.Text>{roleLabelMap[role]}</Typography.Text>
+                  <Typography.Text>{currentUser?.contactName ?? roleLabelMap[role]}</Typography.Text>
                 </Space>
               </Dropdown>
             </Space>

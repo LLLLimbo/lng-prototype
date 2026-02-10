@@ -34,6 +34,16 @@ export type TransportMode = 'upstream' | 'self' | 'carrier'
 export type PaymentMethod = 'prepaid' | 'postpaid'
 export type WeighDiffRule = 'load' | 'unload' | 'delta'
 
+export interface AuthUser {
+  id: string
+  phone: string
+  password: string
+  contactName: string
+  organizationName: string
+  role: RoleKey
+  customerId?: string
+}
+
 export interface Site {
   id: string
   name: string
@@ -109,6 +119,13 @@ export interface Order {
   weighDiffRule: WeighDiffRule
   status: OrderStatus
   threshold: number
+  upstreamOrderNo?: string
+  loadSiteName?: string
+  estimatedLoadAt?: string
+  supplementDocName?: string
+  supplementStatus?: 'pending' | 'approved' | 'rejected'
+  supplementReviewer?: string
+  supplementNote?: string
   loadWeight?: number
   unloadWeight?: number
   settlementWeight?: number
@@ -259,6 +276,25 @@ export interface DashboardMetric {
   trend?: string
 }
 
+export interface DailyPlanReportPlan {
+  planId: string
+  number: string
+  customerName: string
+  siteName: string
+  plannedVolume: number
+  transportMode: TransportMode
+  status: PlanStatus
+  submittedAt: string
+}
+
+export interface DailyPlanReport {
+  id: string
+  reportDate: string
+  generatedAt: string
+  generatedBy: string
+  plans: DailyPlanReportPlan[]
+}
+
 export interface PlanInput {
   siteId: string
   priceId: string
@@ -363,6 +399,26 @@ export interface UpdatePersonInput {
   patch: Partial<Pick<Person, 'name' | 'role' | 'certExpiry' | 'valid'>>
 }
 
+export interface SubmitOrderSupplementInput {
+  orderId: string
+  upstreamOrderNo: string
+  loadSiteName: string
+  estimatedLoadAt: string
+  supplementDocName?: string
+}
+
+export interface ReviewOrderSupplementInput {
+  orderId: string
+  action: 'approve' | 'reject'
+  reviewer: string
+  reason?: string
+}
+
+export interface GenerateDailyPlanReportInput {
+  reportDate: string
+  generatedBy: string
+}
+
 export interface ReviewOnboardingInput {
   applicationId: string
   action: 'approve' | 'reject'
@@ -417,7 +473,46 @@ export interface IssueInvoiceInput {
   attachmentName?: string
 }
 
+export interface LoginInput {
+  phone: string
+  password: string
+  verifyCode: string
+}
+
+export interface LoginResult {
+  success: boolean
+  error?: string
+}
+
+export interface RegisterInput {
+  organizationName: string
+  contactName: string
+  phone: string
+  password: string
+  role: RoleKey
+  verifyCode: string
+}
+
+export interface RegisterResult {
+  success: boolean
+  error?: string
+}
+
+export interface ResetPasswordInput {
+  phone: string
+  verifyCode: string
+  newPassword: string
+}
+
+export interface ResetPasswordResult {
+  success: boolean
+  error?: string
+}
+
 export interface AppSeed {
+  isAuthenticated: boolean
+  currentUser?: AuthUser
+  authUsers: AuthUser[]
   currentRole: RoleKey
   activeCustomerId: string
   activeCustomerName: string
@@ -437,10 +532,15 @@ export interface AppSeed {
   invoiceApplications: InvoiceApplication[]
   onboardingApplications: OnboardingApplication[]
   exceptions: ExceptionCase[]
+  dailyPlanReports: DailyPlanReport[]
   dashboardMetrics: Record<RoleKey, DashboardMetric[]>
 }
 
 export interface AppState extends AppSeed {
+  login: (input: LoginInput) => LoginResult
+  registerAccount: (input: RegisterInput) => RegisterResult
+  resetPassword: (input: ResetPasswordInput) => ResetPasswordResult
+  logout: () => void
   switchRole: (role: RoleKey) => void
   addSite: (input: AddSiteInput) => string
   updateSite: (input: UpdateSiteInput) => void
@@ -451,6 +551,9 @@ export interface AppState extends AppSeed {
   addPerson: (input: AddPersonInput) => string
   updatePerson: (input: UpdatePersonInput) => void
   disablePerson: (personId: string) => void
+  submitOrderSupplement: (input: SubmitOrderSupplementInput) => void
+  reviewOrderSupplement: (input: ReviewOrderSupplementInput) => void
+  generateDailyPlanReport: (input: GenerateDailyPlanReportInput) => string
   createPlan: (input: PlanInput) => CreatePlanResult
   reviewPlan: (input: ReviewPlanInput) => void
   cancelPlan: (planId: string, reason: string) => void
@@ -524,8 +627,62 @@ const createLedger = (
 })
 
 const ensureFixed = (value: number) => Number(value.toFixed(2))
+const MOCK_VERIFY_CODE = '123456'
 
 export const defaultMockData = (): AppSeed => ({
+  isAuthenticated: false,
+  currentUser: undefined,
+  authUsers: [
+    {
+      id: 'auth-terminal-01',
+      phone: '13800138000',
+      password: '123456',
+      contactName: '张三',
+      organizationName: '华东能源科技有限公司',
+      role: 'terminal',
+      customerId: 'customer-a',
+    },
+    {
+      id: 'auth-market-01',
+      phone: '13800138001',
+      password: '123456',
+      contactName: '周婷',
+      organizationName: '气源发展-市场部',
+      role: 'market',
+    },
+    {
+      id: 'auth-dispatch-01',
+      phone: '13800138002',
+      password: '123456',
+      contactName: '刘工',
+      organizationName: '气源发展-调度中心',
+      role: 'dispatch',
+    },
+    {
+      id: 'auth-finance-01',
+      phone: '13800138003',
+      password: '123456',
+      contactName: '陈会计',
+      organizationName: '气源发展-财务部',
+      role: 'finance',
+    },
+    {
+      id: 'auth-carrier-01',
+      phone: '13800138004',
+      password: '123456',
+      contactName: '刘主管',
+      organizationName: '华东承运物流有限公司',
+      role: 'carrier',
+    },
+    {
+      id: 'auth-driver-01',
+      phone: '13800138005',
+      password: '123456',
+      contactName: '赵强',
+      organizationName: '华东承运物流有限公司',
+      role: 'driver',
+    },
+  ],
   currentRole: 'terminal',
   activeCustomerId: 'customer-a',
   activeCustomerName: '华东能源科技有限公司',
@@ -853,6 +1010,26 @@ export const defaultMockData = (): AppSeed => ({
       createdAt: '2026-02-09T09:20:00.000Z',
     },
   ],
+  dailyPlanReports: [
+    {
+      id: 'dpr-20260209',
+      reportDate: '2026-02-09',
+      generatedAt: '2026-02-09T21:30:00.000Z',
+      generatedBy: '市场部-系统任务',
+      plans: [
+        {
+          planId: 'plan-1001',
+          number: 'PL-20260209-001',
+          customerName: '华东能源科技有限公司',
+          siteName: '苏州工业园卸气站',
+          plannedVolume: 22,
+          transportMode: 'carrier',
+          status: 'submitted',
+          submittedAt: '2026-02-09T08:30:00.000Z',
+        },
+      ],
+    },
+  ],
   dashboardMetrics: {
     terminal: [
       { id: 'tm-1', title: '账户可用余额', value: '¥160,000.00', trend: '+12%' },
@@ -890,6 +1067,127 @@ export const defaultMockData = (): AppSeed => ({
 const createState = (seed: AppSeed): StateCreator<AppState> =>
   (set, get) => ({
     ...seed,
+    login: (input: LoginInput): LoginResult => {
+      const state = get()
+      const phone = input.phone.trim()
+
+      if (!phone) {
+        return { success: false, error: '请输入手机号' }
+      }
+
+      if (!input.password.trim()) {
+        return { success: false, error: '请输入密码' }
+      }
+
+      if (input.verifyCode.trim() !== MOCK_VERIFY_CODE) {
+        return { success: false, error: '验证码错误，请输入 123456（Mock）' }
+      }
+
+      const target = state.authUsers.find((item) => item.phone === phone)
+
+      if (!target) {
+        return { success: false, error: '账号不存在' }
+      }
+
+      if (target.password !== input.password) {
+        return { success: false, error: '密码错误' }
+      }
+
+      set({
+        isAuthenticated: true,
+        currentUser: target,
+        currentRole: target.role,
+        activeCustomerId: target.customerId ?? state.activeCustomerId,
+        activeCustomerName: target.organizationName,
+      })
+
+      return { success: true }
+    },
+    registerAccount: (input: RegisterInput): RegisterResult => {
+      const state = get()
+      const phone = input.phone.trim()
+
+      if (!input.organizationName.trim()) {
+        return { success: false, error: '请输入组织名称' }
+      }
+
+      if (!input.contactName.trim()) {
+        return { success: false, error: '请输入联系人' }
+      }
+
+      if (!phone) {
+        return { success: false, error: '请输入手机号' }
+      }
+
+      if (!input.password.trim()) {
+        return { success: false, error: '请输入登录密码' }
+      }
+
+      if (input.verifyCode.trim() !== MOCK_VERIFY_CODE) {
+        return { success: false, error: '验证码错误，请输入 123456（Mock）' }
+      }
+
+      if (state.authUsers.some((item) => item.phone === phone)) {
+        return { success: false, error: '该手机号已注册' }
+      }
+
+      const authUser: AuthUser = {
+        id: nextId('auth'),
+        phone,
+        password: input.password,
+        contactName: input.contactName.trim(),
+        organizationName: input.organizationName.trim(),
+        role: input.role,
+        customerId: input.role === 'terminal' ? nextId('customer') : undefined,
+      }
+
+      set({
+        authUsers: [authUser, ...state.authUsers],
+      })
+
+      return { success: true }
+    },
+    resetPassword: (input: ResetPasswordInput): ResetPasswordResult => {
+      const state = get()
+      const phone = input.phone.trim()
+
+      if (!phone) {
+        return { success: false, error: '请输入手机号' }
+      }
+
+      if (input.verifyCode.trim() !== MOCK_VERIFY_CODE) {
+        return { success: false, error: '验证码错误，请输入 123456（Mock）' }
+      }
+
+      if (!input.newPassword.trim()) {
+        return { success: false, error: '请输入新密码' }
+      }
+
+      const target = state.authUsers.find((item) => item.phone === phone)
+
+      if (!target) {
+        return { success: false, error: '账号不存在' }
+      }
+
+      set({
+        authUsers: state.authUsers.map((item) =>
+          item.phone === phone
+            ? {
+                ...item,
+                password: input.newPassword,
+              }
+            : item,
+        ),
+      })
+
+      return { success: true }
+    },
+    logout: () => {
+      set({
+        isAuthenticated: false,
+        currentUser: undefined,
+      })
+    },
     switchRole: (role: RoleKey) => {
       set({ currentRole: role })
     },
@@ -1065,6 +1363,105 @@ const createState = (seed: AppSeed): StateCreator<AppState> =>
       )
 
       set({ personnel: nextPersonnel })
+    },
+    submitOrderSupplement: (input: SubmitOrderSupplementInput) => {
+      const state = get()
+      const target = state.orders.find((item) => item.id === input.orderId)
+
+      if (!target) {
+        return
+      }
+
+      const nextOrders = state.orders.map((item) =>
+        item.id === input.orderId
+          ? {
+              ...item,
+              upstreamOrderNo: input.upstreamOrderNo.trim(),
+              loadSiteName: input.loadSiteName.trim(),
+              estimatedLoadAt: input.estimatedLoadAt.trim(),
+              supplementDocName: input.supplementDocName?.trim() || undefined,
+              supplementStatus: 'pending' as const,
+              supplementReviewer: undefined,
+              supplementNote: undefined,
+              status: 'pending-supplement' as const,
+            }
+          : item,
+      )
+
+      set({
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'approval',
+            '订单补录待审核',
+            `${target.number} 已提交补录信息，待调度审核。`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    reviewOrderSupplement: (input: ReviewOrderSupplementInput) => {
+      const state = get()
+      const target = state.orders.find((item) => item.id === input.orderId)
+
+      if (!target || target.supplementStatus !== 'pending') {
+        return
+      }
+
+      const approved = input.action === 'approve'
+      const nextOrders = state.orders.map((item) =>
+        item.id === input.orderId
+          ? {
+              ...item,
+              supplementStatus: approved ? ('approved' as const) : ('rejected' as const),
+              supplementReviewer: input.reviewer,
+              supplementNote: input.reason,
+              status: approved ? ('stocking' as const) : ('pending-supplement' as const),
+            }
+          : item,
+      )
+
+      set({
+        orders: nextOrders,
+        notifications: [
+          createNotification(
+            'approval',
+            approved ? '订单补录已通过' : '订单补录已驳回',
+            `${target.number} 补录审核结果：${approved ? '通过，进入备货' : '驳回，待修改后重提'}`,
+          ),
+          ...state.notifications,
+        ],
+      })
+    },
+    generateDailyPlanReport: (input: GenerateDailyPlanReportInput): string => {
+      const state = get()
+      const plans = state.plans
+        .filter((item) => item.submittedAt.slice(0, 10) === input.reportDate)
+        .map((item) => ({
+          planId: item.id,
+          number: item.number,
+          customerName: item.customerName,
+          siteName: item.siteName,
+          plannedVolume: item.plannedVolume,
+          transportMode: item.transportMode,
+          status: item.status,
+          submittedAt: item.submittedAt,
+        }))
+
+      const reportId = nextId('dpr')
+      const report: DailyPlanReport = {
+        id: reportId,
+        reportDate: input.reportDate,
+        generatedAt: now(),
+        generatedBy: input.generatedBy,
+        plans,
+      }
+
+      set({
+        dailyPlanReports: [report, ...state.dailyPlanReports],
+      })
+
+      return reportId
     },
     createPlan: (input: PlanInput): CreatePlanResult => {
       const state = get()

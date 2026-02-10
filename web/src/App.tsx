@@ -19,11 +19,39 @@ import ReconciliationPage from './pages/ReconciliationPage'
 import ReportsPage from './pages/ReportsPage'
 import SettlementPage from './pages/SettlementPage'
 import ArchivePage from './pages/ArchivePage'
+import AttachmentCenterPage from './pages/AttachmentCenterPage'
 import BasicInfoPage from './pages/BasicInfoPage'
+import DailyPlanReportPage from './pages/DailyPlanReportPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import LoginPage from './pages/LoginPage'
+import OrderListPage from './pages/OrderListPage'
+import OrderManagementPage from './pages/OrderManagementPage'
+import RegisterPage from './pages/RegisterPage'
 import { useAppStore } from './store/useAppStore'
 
 interface GuardProps {
   children: ReactElement
+}
+
+function AuthRequiredGuard({ children }: GuardProps) {
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated)
+  const location = useLocation()
+
+  if (isAuthenticated) {
+    return children
+  }
+
+  return <Navigate to="/auth/login" replace state={{ from: location.pathname }} />
+}
+
+function GuestOnlyGuard({ children }: GuardProps) {
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated)
+
+  if (!isAuthenticated) {
+    return children
+  }
+
+  return <Navigate to="/app/dashboard" replace />
 }
 
 function PermissionGuard({ children }: GuardProps) {
@@ -49,11 +77,47 @@ function PermissionGuard({ children }: GuardProps) {
 }
 
 function App() {
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated)
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
-        <Route path="/app" element={<AdminLayout />}>
+        <Route
+          path="/"
+          element={<Navigate to={isAuthenticated ? '/app/dashboard' : '/auth/login'} replace />}
+        />
+        <Route
+          path="/auth/login"
+          element={
+            <GuestOnlyGuard>
+              <LoginPage />
+            </GuestOnlyGuard>
+          }
+        />
+        <Route
+          path="/auth/register"
+          element={
+            <GuestOnlyGuard>
+              <RegisterPage />
+            </GuestOnlyGuard>
+          }
+        />
+        <Route
+          path="/auth/forgot"
+          element={
+            <GuestOnlyGuard>
+              <ForgotPasswordPage />
+            </GuestOnlyGuard>
+          }
+        />
+        <Route
+          path="/app"
+          element={
+            <AuthRequiredGuard>
+              <AdminLayout />
+            </AuthRequiredGuard>
+          }
+        >
           <Route
             path="dashboard"
             element={
@@ -95,6 +159,14 @@ function App() {
             }
           />
           <Route
+            path="plans/daily-report"
+            element={
+              <PermissionGuard>
+                <DailyPlanReportPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
             path="onboarding"
             element={
               <PermissionGuard>
@@ -107,6 +179,22 @@ function App() {
             element={
               <PermissionGuard>
                 <BasicInfoPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="orders/manage"
+            element={
+              <PermissionGuard>
+                <OrderManagementPage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="orders/list"
+            element={
+              <PermissionGuard>
+                <OrderListPage />
               </PermissionGuard>
             }
           />
@@ -139,6 +227,14 @@ function App() {
             element={
               <PermissionGuard>
                 <InvoicePage />
+              </PermissionGuard>
+            }
+          />
+          <Route
+            path="attachments"
+            element={
+              <PermissionGuard>
+                <AttachmentCenterPage />
               </PermissionGuard>
             }
           />
