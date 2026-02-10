@@ -72,6 +72,7 @@ interface ReceivableOrderRow {
   paymentStatus: Order['paymentStatus']
   receivableAmount: number
   receivedAmount: number
+  outstandingAmount: number
   relatedExceptionCount: number
   pendingExceptionCount: number
   followUpStatus: '待收款' | '异常待处理' | '待核销'
@@ -173,6 +174,8 @@ function FinancePage() {
               : order.paymentStatus === 'paid'
                 ? '待核销'
                 : '待收款'
+          const receivableAmount = Number((baseAmount * settlementRatio).toFixed(2))
+          const receivedAmount = order.receivedAmount ?? 0
 
           return {
             id: order.id,
@@ -183,8 +186,9 @@ function FinancePage() {
             paymentMethodLabel,
             orderStatus: order.status,
             paymentStatus: order.paymentStatus,
-            receivableAmount: Number((baseAmount * settlementRatio).toFixed(2)),
-            receivedAmount: order.receivedAmount ?? 0,
+            receivableAmount,
+            receivedAmount,
+            outstandingAmount: Number(Math.max(0, receivableAmount - receivedAmount).toFixed(2)),
             relatedExceptionCount: relatedExceptions.length,
             pendingExceptionCount,
             followUpStatus,
@@ -196,6 +200,10 @@ function FinancePage() {
 
   const receivableAmount = useMemo(
     () => receivableOrders.reduce((sum, item) => sum + item.receivableAmount, 0),
+    [receivableOrders],
+  )
+  const outstandingAmount = useMemo(
+    () => receivableOrders.reduce((sum, item) => sum + item.outstandingAmount, 0),
     [receivableOrders],
   )
 
@@ -243,6 +251,16 @@ function FinancePage() {
 
   const submitOrderReceipt = () => {
     if (!receiptTarget) {
+      return
+    }
+
+    if (receivedAmountInput <= 0) {
+      message.error('请输入本次到账金额')
+      return
+    }
+
+    if (receivedAmountInput > receiptTarget.outstandingAmount + 0.01) {
+      message.error('本次到账金额不能超过剩余应收')
       return
     }
 
@@ -405,8 +423,8 @@ function FinancePage() {
                   message="订单待收款列表"
                   description={
                     role === 'finance'
-                      ? `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}。`
-                      : `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}（仅财务可执行到款确认）。`
+                      ? `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}，剩余待收 ${formatMoney(outstandingAmount)}。`
+                      : `当前待跟进 ${receivableOrders.length} 单，应收金额合计 ${formatMoney(receivableAmount)}，剩余待收 ${formatMoney(outstandingAmount)}（仅财务可执行到款确认）。`
                   }
                 />
                 <Alert
@@ -449,6 +467,12 @@ function FinancePage() {
                     {
                       title: '已收金额',
                       dataIndex: 'receivedAmount',
+                      align: 'right',
+                      render: (value: number) => formatMoney(value),
+                    },
+                    {
+                      title: '剩余应收',
+                      dataIndex: 'outstandingAmount',
                       align: 'right',
                       render: (value: number) => formatMoney(value),
                     },
@@ -498,7 +522,9 @@ function FinancePage() {
                         }
 
                         const canConfirm =
-                          record.followUpStatus !== '异常待处理' && record.paymentStatus !== 'paid'
+                          record.followUpStatus !== '异常待处理' &&
+                          record.paymentStatus !== 'paid' &&
+                          record.outstandingAmount > 0
 
                         return canConfirm ? (
                           <Button
@@ -508,11 +534,7 @@ function FinancePage() {
                               setReceiptTarget(record)
                               setReceivedDate(dayjs())
                               setReceivedNote('')
-                              setReceivedAmountInput(
-                                Number(
-                                  Math.max(0, record.receivableAmount - record.receivedAmount).toFixed(2),
-                                ),
-                              )
+                              setReceivedAmountInput(record.outstandingAmount)
                             }}
                           >
                             确认到款
@@ -673,9 +695,16 @@ function FinancePage() {
             <Form.Item label="应收金额">
               <Input value={formatMoney(receiptTarget.receivableAmount)} disabled />
             </Form.Item>
+            <Form.Item label="已收金额">
+              <Input value={formatMoney(receiptTarget.receivedAmount)} disabled />
+            </Form.Item>
+            <Form.Item label="剩余应收">
+              <Input value={formatMoney(receiptTarget.outstandingAmount)} disabled />
+            </Form.Item>
             <Form.Item label="本次到账金额（元）" required>
               <InputNumber
                 min={0}
+                max={receiptTarget.outstandingAmount}
                 style={{ width: '100%' }}
                 value={receivedAmountInput}
                 onChange={(value) => setReceivedAmountInput(Number(value ?? 0))}

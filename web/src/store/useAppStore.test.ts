@@ -215,6 +215,52 @@ describe('app store domain flow', () => {
     expect(store.getState().ledgers[0].note).toContain('订单到款确认')
   })
 
+  it('supports partial receipts and settles after full receipt', () => {
+    const store = createAppStore(defaultMockData())
+
+    store.getState().acceptOrder('order-2001', true, 17.8)
+
+    const firstResult = store.getState().confirmOrderReceipt({
+      orderId: 'order-2001',
+      amount: 30000,
+      receivedAt: '2026-02-11',
+      receiver: '财务-陈会计',
+    })
+
+    expect(firstResult.success).toBe(true)
+
+    const afterFirst = store.getState().orders.find((item) => item.id === 'order-2001')
+    expect(afterFirst?.paymentStatus).toBe('partial')
+    expect(afterFirst?.receivedAmount).toBe(30000)
+    expect(afterFirst?.status).toBe('accepted')
+
+    const secondResult = store.getState().confirmOrderReceipt({
+      orderId: 'order-2001',
+      amount: 42287.78,
+      receivedAt: '2026-02-12',
+      receiver: '财务-陈会计',
+    })
+
+    expect(secondResult.success).toBe(true)
+    const afterSecond = store.getState().orders.find((item) => item.id === 'order-2001')
+    expect(afterSecond?.paymentStatus).toBe('paid')
+    expect(afterSecond?.receivedAmount).toBe(72287.78)
+    expect(afterSecond?.status).toBe('settled')
+  })
+
+  it('rejects receipt amount when exceeding receivable amount', () => {
+    const store = createAppStore(defaultMockData())
+    const result = store.getState().confirmOrderReceipt({
+      orderId: 'order-2001',
+      amount: 80000,
+      receivedAt: '2026-02-11',
+      receiver: '财务-陈会计',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('超过应收金额')
+  })
+
   it('creates and approves an exception case', () => {
     const store = createAppStore(defaultMockData())
     const exceptionId = store.getState().createException({
